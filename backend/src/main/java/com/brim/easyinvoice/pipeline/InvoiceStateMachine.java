@@ -57,13 +57,22 @@ public class InvoiceStateMachine {
 
     /** Clears the hold. The caller then queues the resume node. */
     public NodeName releaseHold(Invoice invoice, Actor actor, String reason) {
+        return releaseHold(invoice, actor, reason, Map.of());
+    }
+
+    /** Clears the hold, adding extra facts (e.g. overridden fraud signals) to the audit event. */
+    public NodeName releaseHold(Invoice invoice, Actor actor, String reason, Map<String, ?> details) {
         InvoiceStatus from = invoice.getStatus();
         String queue = invoice.getHoldQueue();
         NodeName resumeAt = NodeName.valueOf(invoice.getResumeNode());
         InvoiceStatus to = resumeAt.statusBefore();
         change(invoice, to, null, null, null);
-        audit.record(actor, invoice.getId(), null, "hold.resolved", resumeAt.name(), from.name(), to.name(),
-                Map.of("queue", String.valueOf(queue), "reason", reason, "resumeNode", resumeAt.name()));
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("queue", String.valueOf(queue));
+        payload.put("reason", reason);
+        payload.put("resumeNode", resumeAt.name());
+        payload.putAll(details);
+        audit.record(actor, invoice.getId(), null, "hold.resolved", resumeAt.name(), from.name(), to.name(), payload);
         return resumeAt;
     }
 

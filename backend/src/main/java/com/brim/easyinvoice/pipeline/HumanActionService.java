@@ -23,7 +23,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -112,6 +114,7 @@ public class HumanActionService {
         // On a fraud hold also override the score's individual signals, so re-entering FRAUD_SCORING
         // does not block again on the same, already reviewed, signals.
         boolean fraudHold = HoldQueue.FRAUD_HOLD.name().equals(invoice.getHoldQueue());
+        List<String> overriddenSignals = new ArrayList<>();
         for (Flag flag : flags.findByInvoice_IdOrderById(invoice.getId())) {
             if (flag.isOverridden()) continue;
             boolean blockingFlag = flag.getSeverity() == FlagSeverity.BLOCK;
@@ -119,8 +122,14 @@ public class HumanActionService {
             if (!blockingFlag && !fraudSignal) continue;
             flag.setOverriddenBy(user);
             flag.setOverrideReason(reason);
+            if (fraudSignal) overriddenSignals.add(flag.getCode());
         }
-        NodeName resumeAt = stateMachine.releaseHold(invoice, Actor.of(user), reason);
+        Map<String, Object> details = new HashMap<>();
+        if (fraudHold) {
+            details.put("riskScore", invoice.getRiskScore());
+            details.put("overriddenSignals", overriddenSignals);
+        }
+        NodeName resumeAt = stateMachine.releaseHold(invoice, Actor.of(user), reason, details);
         runner.enqueue(invoice, resumeAt);
     }
 
@@ -133,7 +142,12 @@ public class HumanActionService {
 
     // ---------- Payment release ----------
 
+    /** Kept for callers that do not supply an optional note. */
     public void release(User user, String paymentId) {
+        release(user, paymentId, null);
+    }
+
+    public void release(User user, String paymentId, String reason) {
         Payment payment = payments.get(paymentId);
         Invoice invoice = invoices.get(payment.getInvoiceId());
         authorization.authorize(user, Action.RELEASE_PAYMENT, invoice);
@@ -144,9 +158,11 @@ public class HumanActionService {
         payment.setStatus(PaymentStatus.RELEASED);
         payment.setReleasedBy(user);
         payment.setReleasedAt(OffsetDateTime.now());
+        Map<String, Object> releaseDetails = details("amount", payment.getAmount(), "currency", payment.getCurrency(),
+                "method", payment.getMethod());
+        if (reason != null && !reason.isBlank()) releaseDetails.put("reason", reason.trim());
         audit.record(Actor.of(user), invoice.getId(), payment.getId(), "payment.released",
-                NodeName.PAYMENT_RELEASE.name(), null, null,
-                details("amount", payment.getAmount(), "currency", payment.getCurrency(), "method", payment.getMethod()));
+                NodeName.PAYMENT_RELEASE.name(), null, null, releaseDetails);
         stateMachine.moveTo(invoice, InvoiceStatus.RELEASED, Actor.of(user), NodeName.PAYMENT_RELEASE.name(), null);
         runner.enqueue(invoice, NodeName.PAYMENT_RELEASE);
     }

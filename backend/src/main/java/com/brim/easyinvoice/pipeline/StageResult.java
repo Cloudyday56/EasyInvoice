@@ -17,6 +17,7 @@ import java.util.Map;
  * @param message             one human-readable sentence for the audit log and the UI
  * @param holdQueue           where a BLOCK parks the invoice
  * @param recheckAfterSeconds for WAIT: run this node again after N seconds (null = wait for a human)
+ * @param auditDetails        optional structured facts copied into the audit payload (never into the invoice)
  */
 public record StageResult(
         Outcome outcome,
@@ -26,7 +27,19 @@ public record StageResult(
         String reasonCode,
         String message,
         HoldQueue holdQueue,
-        Integer recheckAfterSeconds) {
+        Integer recheckAfterSeconds,
+        Map<String, Object> auditDetails) {
+
+    /** Existing nodes keep using the original eight-argument form. */
+    public StageResult(Outcome outcome, List<FlagDraft> flags, Map<String, Object> patch, List<InvoiceLine> lines,
+                       String reasonCode, String message, HoldQueue holdQueue, Integer recheckAfterSeconds) {
+        this(outcome, flags, patch, lines, reasonCode, message, holdQueue, recheckAfterSeconds, Map.of());
+    }
+
+    /** Returns a copy with extra audit facts; used by the fraud node for its score breakdown. */
+    public StageResult withAuditDetails(Map<String, Object> details) {
+        return new StageResult(outcome, flags, patch, lines, reasonCode, message, holdQueue, recheckAfterSeconds, details);
+    }
 
     public static StageResult pass(String message) {
         return new StageResult(Outcome.PASS, List.of(), Map.of(), null, null, message, null, null);

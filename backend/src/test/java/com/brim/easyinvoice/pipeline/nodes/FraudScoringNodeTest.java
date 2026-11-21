@@ -27,6 +27,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -218,6 +219,17 @@ class FraudScoringNodeTest {
         assertThat(result.patch().get("riskScore")).isEqualTo(75);
         assertThat(codes(result)).containsExactlyInAnyOrder(
                 "DUPLICATE_INVOICE_NUMBER", "SPLIT_INVOICE", "AMOUNT_OUTLIER");
+
+        // The UI reads these structured facts instead of parsing the summary message.
+        assertThat(result.auditDetails().get("fraudSignals")).isEqualTo(List.of(
+                "DUPLICATE_INVOICE_NUMBER", "SPLIT_INVOICE", "AMOUNT_OUTLIER"));
+        assertThat(result.auditDetails().get("fraudScoreBreakdown")).isEqualTo(Map.of(
+                "DUPLICATE_INVOICE_NUMBER", 30,
+                "SPLIT_INVOICE", 25,
+                "AMOUNT_OUTLIER", 20));
+        assertThat(result.auditDetails().get("scoreThresholds")).isEqualTo(Map.of(
+                "passBelow", 40,
+                "blockAt", 70));
     }
 
     @Test

@@ -85,6 +85,24 @@ const STATUS_MAP: Record<BackendInvoiceStatus, InvoiceStatus> = {
 
 const TERMINAL: BackendInvoiceStatus[] = ['PAID', 'REJECTED', 'IGNORED']
 
+const prettifyCode = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+
+/** Friendly labels for the audit trail; the raw backend codes stay in the technical details. */
+export const auditNodeLabel = (node: string | null | undefined) =>
+  node ? (NODE_LABELS[node] ?? prettifyCode(node)) : ''
+
+export const auditStatusLabel = (status: string | null | undefined) =>
+  status ? (STATUS_MAP[status as BackendInvoiceStatus] ?? prettifyCode(status)) : ''
+
+export const auditHoldLabel = (queue: string | null | undefined) =>
+  queue ? (HOLD_LABELS[queue] ?? prettifyCode(queue)) : ''
+
+export const auditPretty = prettifyCode
+
 export const isTerminal = (status: BackendInvoiceStatus) => TERMINAL.includes(status)
 export const isOnHold = (status: BackendInvoiceStatus) => status === 'ON_HOLD' || status === 'ON_HOLD_VENDOR'
 

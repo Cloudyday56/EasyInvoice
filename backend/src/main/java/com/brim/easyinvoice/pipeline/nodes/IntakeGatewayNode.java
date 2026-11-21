@@ -10,6 +10,7 @@ import com.brim.easyinvoice.pipeline.NodeName;
 import com.brim.easyinvoice.pipeline.StageResult;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -54,6 +55,8 @@ public class IntakeGatewayNode implements Node {
             return StageResult.block(HoldQueue.INTAKE_ERRORS, "TOO_LARGE", "File is over 10 MB");
         }
         // TODO: detect corrupt files (try to open the PDF / decode the image).
-        return StageResult.pass("Stored " + doc.getFileName() + " (sha256 " + doc.getSha256().substring(0, 12) + "…)");
+        String fingerprint = doc.getSha256() == null ? null : doc.getSha256().substring(0, 12);
+        return StageResult.pass("Stored " + doc.getFileName())
+                .withAuditDetails(fingerprint == null ? Map.of() : Map.of("fileFingerprint", fingerprint));
     }
 }

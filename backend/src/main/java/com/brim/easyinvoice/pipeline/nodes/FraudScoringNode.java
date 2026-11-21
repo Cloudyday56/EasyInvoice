@@ -21,6 +21,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -92,22 +93,26 @@ public class FraudScoringNode implements Node {
                 .map(s -> FlagDraft.warning(s.code(), s.message()))
                 .toList();
         Map<String, Object> patch = Map.of("riskScore", score);
+        Map<String, Integer> breakdown = new LinkedHashMap<>();
+        signals.forEach(s -> breakdown.merge(s.code(), s.points(), Integer::sum));
+        Map<String, Object> auditDetails = Map.of(
+                "fraudSignals", signals.stream().map(Signal::code).toList(),
+                "fraudScoreBreakdown", breakdown,
+                "scoreThresholds", Map.of("passBelow", config.getPassBelow(), "blockAt", config.getBlockAt()));
         String summary = signals.isEmpty()
                 ? "No fraud signals detected"
-                : "Fraud risk score " + score + " from " + signals.size() + " signal(s): "
-                    + signals.stream()
-                        .map(s -> s.code() + " (+" + s.points() + ")")
-                        .reduce((a, b) -> a + ", " + b)
-                        .orElse("");
+                : "Fraud risk score " + score + " — "
+                    + signals.stream().map(Signal::code).reduce((a, b) -> a + ", " + b).orElse("");
 
         boolean bankMismatchBlock = signals.stream().anyMatch(s -> s.code().equals("BANK_DETAILS_MISMATCH"));
         if (bankMismatchBlock || score >= config.getBlockAt()) {
-            return StageResult.blockWithFlags(HoldQueue.FRAUD_HOLD, "FRAUD_RISK", summary, patch, drafts);
+            return StageResult.blockWithFlags(HoldQueue.FRAUD_HOLD, "FRAUD_RISK", summary, patch, drafts)
+                    .withAuditDetails(auditDetails);
         }
         if (score >= config.getPassBelow()) {
-            return StageResult.flag(summary, drafts, patch, null);
+            return StageResult.flag(summary, drafts, patch, null).withAuditDetails(auditDetails);
         }
-        return StageResult.passWithFlags(summary, patch, drafts);
+        return StageResult.passWithFlags(summary, patch, drafts).withAuditDetails(auditDetails);
     }
 
     private Set<String> overriddenCodes(Invoice invoice) {

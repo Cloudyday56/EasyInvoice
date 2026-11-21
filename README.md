@@ -6,7 +6,7 @@ hash-chained audit trail at every step.
 
 ```
 backend/    Java 21 · Spring Boot 4 · Spring Data JPA (Hibernate) · PostgreSQL
-frontend/   React + JavaScript · Vite
+frontend/   React + TypeScript · Vite
 data/       sample dataset (CSV history, inbox emails, incoming invoice files): NOT in git, see below
 ```
 
@@ -30,7 +30,7 @@ Three containers start:
 | `db` | localhost:5432 | Postgres 16 (db/user/password `easyinvoice`) |
 
 On first start Hibernate creates the tables from the entities in `backend/.../model` (`ddl-auto=update`; there is no
-SQL schema file), and the backend loads `/data` into the database. Data persists in a Docker volume; **Audit & tools → Reset demo** wipes
+SQL schema file), and the backend loads `/data` into the database. Data persists in a Docker volume; **Records & tools → Reset demo data** wipes
 everything and reloads it. `docker compose down -v` deletes the volumes too.
 
 ### LLM (OpenRouter)
@@ -44,7 +44,7 @@ docker compose up --build
 - `LLM_MODEL`: any OpenRouter model id (default `anthropic/claude-sonnet-4.5`). Extraction needs a vision model.
 - `EXTRACTOR=manual|llm`: `manual` (default) reads the PDF's text layer with rules and makes no network calls (scans and images cannot be read: they land in the extraction review queue); `llm` reads the document with the model.
 
-To check the key works: log in as an Admin → **Audit & tools → Test LLM connection**
+To check the key works: log in as an Admin → **Records & tools → Test document reader**
 (or `POST /api/admin/llm/test`). The client is `backend/.../llm/LlmClient.java`.
 
 ### Fraud scoring
@@ -72,6 +72,34 @@ All thresholds, weights, windows and free-mail domains live under `app.fraud.*` 
 `backend/src/main/resources/application.yaml` (bound by `pipeline/FraudScoringConfig.java`).
 Override them with environment variables, e.g. `APP_FRAUD_BLOCK_AT=80`.
 
+### Activity & audit trail in the UI
+
+Every invoice has an **Activity & audit trail** button in the preview header and in the bottom
+action bar. It opens a chronological timeline written for people, not developers:
+
+- friendly action labels ("Placed on hold", "Payment released", "Review flag added")
+- who acted, their role, and who they acted on behalf of
+- the step and status change, plus the human-readable reason or summary
+- structured facts such as risk score, reviewed signals and payment notes
+- raw event IDs, action codes, hashes and JSON tucked under **Technical details**
+- **Key activity / All activity** toggle: starts with a quiet, notable-events view and clearly
+  shows how many events are in view; **Download CSV** and integrity checks always use the full log
+- **Jump to latest** for long histories, while the story still starts at the beginning
+
+Admins also get **Records & tools** in the sidebar:
+
+| Action | What it does |
+|---|---|
+| Review audit activity | Opens the same timeline across all invoices |
+| Check audit integrity | Verifies the hash chain and shows the result in the drawer |
+| Download audit log | Exports CSV for all records, or just the open invoice from the drawer |
+
+Approve, reject, return, resolve and release all carry a written reason into the audit event;
+the release note is optional. Node results add structured audit facts through
+`StageResult.auditDetails()`, so the UI never has to parse a message string to explain a decision.
+Fraud events include `fraudSignals`, `fraudScoreBreakdown` and `scoreThresholds`; resolving a fraud
+hold records `riskScore` and `overriddenSignals`.
+
 ### Local development (without the app containers)
 
 The entities use Lombok. In IntelliJ, enable *Settings → Build → Compiler → Annotation Processors → Enable annotation processing*.
@@ -90,13 +118,13 @@ cd backend && ./mvnw test                  # unit tests + an end-to-end test on 
 3. Switch to **Dev Malhotra** (Operations manager) → **My approvals** → Approve.
 4. Switch to **Elise Tremblay** (finance manager, Admin) → **Payments** → Release.
    The mock bank reports SENT, then SETTLED about 4 s later, and the invoice becomes **PAID**.
-5. Open the invoice's audit trail, or **Audit & tools → Verify chain** / Export CSV.
+5. Open the invoice's **Activity & audit trail**, or use **Records & tools → Check audit integrity** / Download audit log.
 
 Things to show the judges:
 - **Approver ≠ releaser.** Upload as **Kavya Morrison** (Facilities). The manager Liam is on leave, so routing assigns the delegate **Elise** (`acting_for` is recorded). After Elise approves, she is refused the release, so **Marcus Webb** releases it.
 - **Exception queue + resume.** Upload a file whose name contains `block-<node>`, e.g. `test_block-vendor-match.pdf`. It parks in **Needs attention → Vendor hold**. Resume it with a reason and it re-enters at the right node, with the override kept on the flag.
-- **Inbox.** **Audit & tools → Poll AP inbox** ingests `emails.json`. Email has no requester, so most items land in **Routing error**. Emails without attachments become **Missing document** or **Ignored mail**.
-- **Tamper evidence.** Each audit event stores the hash of the one before it. If any row is changed or removed, **Verify chain** names the first broken row.
+- **Inbox.** **Records & tools → Poll AP inbox** ingests `emails.json`. Email has no requester, so most items land in **Routing error**. Emails without attachments become **Missing document** or **Ignored mail**.
+- **Tamper evidence.** Each audit event stores the hash of the one before it. If any row is changed or removed, **Check audit integrity** names the first broken row in the activity drawer.
 
 ## How it fits together
 
@@ -110,7 +138,7 @@ human actions (approve, resume, release) ──► HumanActionService ──► 
 
 | Piece | File | One-line role |
 |---|---|---|
-| Node contract | `pipeline/Node.java`, `StageResult.java`, `Outcome.java` | `run(invoice, ctx) -> {outcome, flags, patch, reasonCode}` |
+| Node contract | `pipeline/Node.java`, `StageResult.java`, `Outcome.java` | `run(invoice, ctx) -> {outcome, flags, patch, reasonCode, auditDetails}` |
 | Ordering | `pipeline/NodeName.java` | Enum order = pipeline order; status on pass; failure queue |
 | Queues | `pipeline/HoldQueue.java` | 8 exception queues, each with its `resume_node` |
 | Runner | `pipeline/PipelineRunner.java` | Job loop, retries with backoff, BLOCK → hold, audit |

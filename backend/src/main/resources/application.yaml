@@ -8,7 +8,7 @@ spring:
   jpa:
     open-in-view: false
     hibernate:
-      ddl-auto: update  # Hibernate creates and updates the tables from the entities
+      ddl-auto: create-drop  # Hibernate creates and updates the tables from the entities
   servlet:
     multipart:
       max-file-size: 10MB
