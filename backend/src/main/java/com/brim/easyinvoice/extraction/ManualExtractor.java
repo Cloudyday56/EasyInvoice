@@ -48,6 +48,8 @@ public class ManualExtractor implements Extractor {
     private static final Pattern VENDOR_GST = Pattern.compile("(?:GST/HST|TPS/TVH)\\s+(\\d{9}RT\\d{4})");
     private static final Pattern VENDOR_QST = Pattern.compile("(?:QST|TVQ)\\s+(\\d{10}TQ\\d{4})");
     private static final Pattern TITLE_SUFFIX = Pattern.compile("\\s+(?:TAX INVOICE|INVOICE|FACTURE|CREDIT NOTE)$");
+    private static final Pattern REMIT_BANK = Pattern.compile(
+            "Inst\\.?\\s*(\\d+)\\s+Transit\\s*(\\d+)\\s+Acct\\s*(\\d+)", FLAGS);
     private static final Pattern PROVINCE = Pattern.compile("\\b(AB|BC|MB|NB|NL|NS|NT|NU|ON|PE|QC|SK|YT)\\s+[A-Z]\\d[A-Z]\\b");
     private static final Pattern CURRENCY_TOTAL = Pattern.compile("Total (CAD|USD)\\s+" + M);
     private static final Pattern SUBTOTAL = Pattern.compile("(?:Subtotal|Sous-total)\\s+" + M, FLAGS);
@@ -82,7 +84,7 @@ public class ManualExtractor implements Extractor {
 
     private static ExtractedInvoice empty() {
         return new ExtractedInvoice(null, null, null, null, null, null, null, null, null, null, null, null,
-                null, null, List.of(), 0, List.of());
+                null, null, null, null, null, List.of(), 0, List.of());
     }
 
     // ---------- parsing ----------
@@ -101,6 +103,8 @@ public class ManualExtractor implements Extractor {
         String gst = find(VENDOR_GST, head);
         String qst = find(VENDOR_QST, head);
         String shipTo = shipToProvince(lines);
+        Matcher bank = REMIT_BANK.matcher(all);
+        boolean hasBank = bank.find();   // card-only vendors print "pay by credit card" instead
 
         Matcher total = CURRENCY_TOTAL.matcher(all);
         String currency = null;
@@ -135,7 +139,9 @@ public class ManualExtractor implements Extractor {
         double confidence = doubtful.isEmpty() ? 0.98 : 0.4;
 
         return new ExtractedInvoice(documentType, vendorName, gst, qst, invoiceNumber, invoiceDate, dueDate, currency,
-                subtotal, gstHst, pstQst, totalAmount, poNumber, shipTo, items, confidence, doubtful);
+                subtotal, gstHst, pstQst, totalAmount, poNumber, shipTo,
+                hasBank ? bank.group(1) : null, hasBank ? bank.group(2) : null, hasBank ? bank.group(3) : null,
+                items, confidence, doubtful);
     }
 
     /** Everything above "Bill to": vendor block and invoice number / dates. */
