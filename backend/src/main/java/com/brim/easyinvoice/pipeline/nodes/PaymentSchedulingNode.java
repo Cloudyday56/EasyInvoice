@@ -3,6 +3,7 @@ package com.brim.easyinvoice.pipeline.nodes;
 import com.brim.easyinvoice.model.PaymentStatus;
 import com.brim.easyinvoice.model.PaymentMethod;
 import com.brim.easyinvoice.model.Invoice;
+import com.brim.easyinvoice.model.DocumentType;
 import com.brim.easyinvoice.model.Payment;
 import com.brim.easyinvoice.model.PaymentNumber;
 import com.brim.easyinvoice.model.Vendor;
@@ -51,6 +52,11 @@ public class PaymentSchedulingNode implements Node {
         Optional<Payment> existing = payments.activeForInvoice(invoice.getId());
         if (existing.isPresent()) {
             return StageResult.pass("Payment " + existing.get().getId() + " already scheduled"); // idempotent
+        }
+
+        if (invoice.getDocumentType() == DocumentType.CREDIT_NOTE) {
+            return StageResult.block(HoldQueue.PAYMENT_EXCEPTIONS, "CREDIT_NOTE",
+                    "Credit note: there is nothing to pay. Apply it to the vendor's account, then reject it from this queue");
         }
 
         Vendor vendor = invoice.getVendorId() == null ? null : vendors.findById(invoice.getVendorId()).orElse(null);

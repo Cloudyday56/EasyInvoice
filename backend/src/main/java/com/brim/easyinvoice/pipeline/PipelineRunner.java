@@ -46,7 +46,7 @@ public class PipelineRunner {
 
     /** Invoice fields a node may change through StageResult.patch. Status is NOT here on purpose. */
     private static final Set<String> PATCHABLE_FIELDS = Set.of(
-            "documentType", "vendor", "vendorNameRaw", "vendorInvoiceNumber", "canonicalInvoiceNumber",
+            "documentType", "vendor", "vendorNameRaw", "vendorGstNumberRaw", "vendorInvoiceNumber", "canonicalInvoiceNumber",
             "invoiceDate", "dueDate", "currency", "subtotal", "gstHstAmount", "pstQstAmount", "total",
             "fxRateToCad", "totalCad", "department", "poNumberRaw", "purchaseOrder", "contract", "shipToProvince",
             "remitBankInstitution", "remitBankTransit", "remitBankAccount", "riskScore");

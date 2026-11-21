@@ -4,7 +4,11 @@ import org.springframework.transaction.annotation.Transactional;
 import com.brim.easyinvoice.model.ApprovalStep;
 import com.brim.easyinvoice.model.Department;
 import com.brim.easyinvoice.model.Invoice;
+import com.brim.easyinvoice.model.Role;
 import com.brim.easyinvoice.model.User;
+import com.brim.easyinvoice.model.UserStatus;
+import com.brim.easyinvoice.model.Vendor;
+import com.brim.easyinvoice.model.VendorStatus;
 import com.brim.easyinvoice.pipeline.HoldQueue;
 import com.brim.easyinvoice.pipeline.Node;
 import com.brim.easyinvoice.pipeline.NodeContext;
@@ -15,30 +19,45 @@ import com.brim.easyinvoice.repo.DepartmentRepository;
 import com.brim.easyinvoice.repo.UserRepository;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
- * Job: build the list of approvers this invoice needs.
- * Partly real: one step for the department manager, with the person-resolution rules
- * (self-approval escalates, on leave goes to the delegate, terminated skips to the manager).
+ * Job: build the chain of approvers this invoice needs (policies P01-P08).
  *
- * TODO: evaluate the JSON rows in `policies` in order (amount tiers, new vendor, Legal category)
- *       and add ADMIN steps; escalate to Admin above the approver's limit; add an Admin step for
- *       FLAGs from Validation rules / Fraud scoring that require it.
+ *   1. Department manager, if the amount is within their limit (an Approver never signs above it).
+ *   2. Finance manager: total over $10,000, vendor pending review or onboarded in the last 90 days, or a Legal vendor.
+ *   3. Controller: total over $50,000.   4. CFO: total over $250,000.
+ *
+ * Each person goes through the same rules (self-approval escalates to their manager, on leave goes to the
+ * delegate, terminated escalates). Nobody appears twice in one chain, and the last approver must be able to
+ * cover the full amount, otherwise the invoice goes to the routing error queue.
+ *
+ * TODO: add an Admin step for FLAGs from Validation rules / Fraud scoring that require it.
  */
 @Component
 public class ApprovalRoutingNode implements Node {
 
     /** Stop following manager chains after this many hops (guards against loops in the data). */
     private static final int MAX_ESCALATIONS = 5;
+    private static final BigDecimal FINANCE_MANAGER_OVER = new BigDecimal("10000");
+    private static final BigDecimal CONTROLLER_OVER = new BigDecimal("50000");
+    private static final BigDecimal CFO_OVER = new BigDecimal("250000");
+    private static final int NEW_VENDOR_DAYS = 90;
 
     private final DepartmentRepository departments;
     private final ApprovalStepRepository steps;
+    private final UserRepository users;
 
-    public ApprovalRoutingNode(DepartmentRepository departments, ApprovalStepRepository steps) {
+    public ApprovalRoutingNode(DepartmentRepository departments, ApprovalStepRepository steps, UserRepository users) {
         this.departments = departments;
         this.steps = steps;
+        this.users = users;
     }
 
     @Override
@@ -68,43 +87,93 @@ public class ApprovalRoutingNode implements Node {
             return StageResult.block(HoldQueue.ROUTING_ERROR, "NO_APPROVER",
                     "Department " + invoice.getDepartmentId() + " has no manager");
         }
+        if (invoice.getTotalCad() == null) {
+            return StageResult.block(HoldQueue.ROUTING_ERROR, "NO_AMOUNT", "Invoice amount in CAD is unknown");
+        }
+        BigDecimal total = invoice.getTotalCad().abs();
+        String requesterId = invoice.getRequesterId();
 
-        Optional<Assignment> assignment = resolve(manager.get(), invoice.getRequesterId());
-        if (assignment.isEmpty()) {
-            return StageResult.block(HoldQueue.ROUTING_ERROR, "NO_ELIGIBLE_APPROVER",
-                    "Could not find an eligible approver for department " + invoice.getDepartmentId());
+        List<Assignment> chain = new ArrayList<>();
+        resolve(manager.get(), requesterId, "Department manager")
+                .filter(a -> within(a.approver(), total))
+                .ifPresent(chain::add);
+
+        Vendor vendor = invoice.getVendor();
+        if (total.compareTo(FINANCE_MANAGER_OVER) > 0) {
+            addAdmin(chain, "finance_manager", "Total over $10,000", requesterId, false);
+        } else if (vendor != null && vendor.getStatus() == VendorStatus.PENDING_REVIEW) {
+            addAdmin(chain, "finance_manager", "Vendor is pending review", requesterId, false);
+        } else if (vendor != null && vendor.getOnboardedAt() != null
+                && vendor.getOnboardedAt().isAfter(LocalDate.now().minusDays(NEW_VENDOR_DAYS))) {
+            addAdmin(chain, "finance_manager", "New vendor (onboarded in the last " + NEW_VENDOR_DAYS + " days)",
+                    requesterId, false);
+        } else if (vendor != null && "Legal".equalsIgnoreCase(vendor.getCategory())) {
+            addAdmin(chain, "finance_manager", "Legal vendor", requesterId, false);
+        }
+        if (total.compareTo(CONTROLLER_OVER) > 0) {
+            addAdmin(chain, "controller_admin", "Total over $50,000", requesterId, false);   // lowest-limit controller
+        }
+        if (total.compareTo(CFO_OVER) > 0) {
+            addAdmin(chain, "controller_admin", "Total over $250,000", requesterId, true);   // highest-limit: the CFO
         }
 
-        Assignment a = assignment.get();
-        ApprovalStep step = new ApprovalStep();
-        step.setInvoice(invoice);
-        step.setStepNo(1);
-        step.setRequiredRole(a.approver().getRole());
-        step.setReason(a.reason());
-        step.setAssignedUser(a.approver());
-        step.setActingFor(a.actingFor());
-        steps.save(step);
-        return StageResult.pass("Step 1: " + a.approver().getFullName() + " (" + a.reason() + ")");
+        if (chain.isEmpty() || !within(chain.get(chain.size() - 1).approver(), total)) {
+            return StageResult.block(HoldQueue.ROUTING_ERROR, "NO_ELIGIBLE_APPROVER",
+                    "No approver can cover " + total + " CAD for department " + invoice.getDepartmentId());
+        }
+
+        for (int i = 0; i < chain.size(); i++) {
+            Assignment a = chain.get(i);
+            ApprovalStep step = new ApprovalStep();
+            step.setInvoice(invoice);
+            step.setStepNo(i + 1);
+            step.setRequiredRole(a.approver().getRole());
+            step.setReason(a.reason());
+            step.setAssignedUser(a.approver());
+            step.setActingFor(a.actingFor());
+            steps.save(step);
+        }
+        return StageResult.pass("Approval chain: " + chain.stream()
+                .map(a -> a.approver().getFullName()).collect(Collectors.joining(" > ")));
     }
 
-    /** Applies the person rules until we land on someone who can actually approve. */
-    Optional<Assignment> resolve(User candidate, String requesterId) {
-        String reason = "Department manager";
+    /** Adds the Admin with this dataset role, unless that person (after the person rules) is already in the chain. */
+    private void addAdmin(List<Assignment> chain, String sourceRole, String why, String requesterId, boolean highestLimit) {
+        Comparator<User> byLimit = Comparator.comparing(User::getApprovalLimitCad, Comparator.nullsFirst(Comparator.naturalOrder()));
+        users.findBySourceRoleAndStatus(sourceRole, UserStatus.ACTIVE).stream()
+                .max(highestLimit ? byLimit : byLimit.reversed())
+                .flatMap(admin -> resolve(admin, requesterId, why))
+                .filter(a -> chain.stream().noneMatch(c -> c.approver().getId().equals(a.approver().getId())))
+                .ifPresent(chain::add);
+    }
+
+    private static boolean within(User approver, BigDecimal total) {
+        return approver.getApprovalLimitCad() != null && total.compareTo(approver.getApprovalLimitCad()) <= 0;
+    }
+
+/** Applies the person rules until we land on someone who can actually approve. */
+    Optional<Assignment> resolve(User candidate, String requesterId, String initialReason) {
+        String reason = initialReason;
         for (int hop = 0; hop < MAX_ESCALATIONS && candidate != null; hop++) {
             if (!candidate.isActive()) {
                 reason = candidate.getFullName() + " has left; escalated to their manager";
                 candidate = managerOf(candidate);
-            } else if (candidate.getId().equals(requesterId)) {
-                reason = "Requester is the department manager; escalated to their manager (no self-approval)";
+            } else if (candidate.getRole() == Role.EMPLOYEE) {
+                reason = candidate.getFullName() + " cannot approve; escalated to their manager";
                 candidate = managerOf(candidate);
-            } else if (candidate.isOnLeave() && candidate.getDelegate() != null) {
+            } else if (candidate.getId().equals(requesterId)) {
+                reason = "Requester is the approver; escalated to their manager (no self-approval)";
+                candidate = managerOf(candidate);
+            } else if (candidate.isOnLeave()) {
                 User delegate = candidate.getDelegate();
-                if (delegate.getId().equals(requesterId) || !delegate.isActive()) {
-                    candidate = managerOf(candidate);
-                    continue;
+                boolean usable = delegate != null && delegate.isActive() && !delegate.isOnLeave()
+                        && delegate.getRole() != Role.EMPLOYEE && !delegate.getId().equals(requesterId);
+                if (usable) {
+                    return Optional.of(new Assignment(delegate, candidate,
+                            candidate.getFullName() + " is on leave; delegate assigned"));
                 }
-                return Optional.of(new Assignment(delegate, candidate,
-                        candidate.getFullName() + " is on leave; delegate assigned"));
+                reason = candidate.getFullName() + " is on leave with no usable delegate; escalated to their manager";
+                candidate = managerOf(candidate);
             } else {
                 return Optional.of(new Assignment(candidate, null, reason));
             }

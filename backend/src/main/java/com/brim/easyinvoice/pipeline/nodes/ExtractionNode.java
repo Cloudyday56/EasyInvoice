@@ -23,7 +23,7 @@ import java.util.Map;
 
 /**
  * Job: turn the document into structured data, using whichever Extractor is configured
- * (fake by default, LLM with EXTRACTOR=llm).
+ * (manual by default, LLM with EXTRACTOR=llm).
  */
 @Component
 public class ExtractionNode implements Node {
@@ -67,6 +67,7 @@ public class ExtractionNode implements Node {
         Map<String, Object> patch = new HashMap<>();
         patch.put("documentType", DocumentType.parse(data.documentType()));
         patch.put("vendorNameRaw", data.vendorName());
+        patch.put("vendorGstNumberRaw", data.vendorGstNumber());
         patch.put("vendorInvoiceNumber", data.invoiceNumber());
         patch.put("invoiceDate", data.invoiceDate());
         patch.put("dueDate", data.dueDate());

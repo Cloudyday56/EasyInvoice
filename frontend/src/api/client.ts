@@ -30,9 +30,7 @@ export interface UserDto {
   managerId: string | null
   role: Role
   sourceRole: string | null
-  readOnly: boolean
   approvalLimitCad: number | null
-  releaseLimitCad: number | null
   status: string
   delegateUserId: string | null
   active: boolean

@@ -42,7 +42,7 @@ docker compose up --build
 
 - `OPENROUTER_API_KEY`: read from the environment only, never stored in code.
 - `LLM_MODEL`: any OpenRouter model id (default `anthropic/claude-sonnet-4.5`). Extraction needs a vision model.
-- `EXTRACTOR=fake|llm`: `fake` (default) invents data and makes no network calls; `llm` reads the document with the model.
+- `EXTRACTOR=manual|llm`: `manual` (default) reads the PDF's text layer with rules and makes no network calls (scans and images cannot be read: they land in the extraction review queue); `llm` reads the document with the model.
 
 To check the key works: log in as an Admin → **Audit & tools → Test LLM connection**
 (or `POST /api/admin/llm/test`). The client is `backend/.../llm/LlmClient.java`.
@@ -141,14 +141,16 @@ and limits on every request. No passwords, because this is a demo.
 
 | users.csv role | App role | Notes |
 |---|---|---|
-| employee | EMPLOYEE | uploads, sees own invoices |
-| approver | APPROVER | own department, up to `approval_limit_cad` |
-| ap_clerk, finance_manager, controller_admin | ADMIN | release limit: clerk 0, finance manager 100k, controller = their approval limit |
-| auditor | ADMIN (read-only) | can view everything, change nothing |
+| employee, ap_clerk, auditor | EMPLOYEE | uploads, sees own invoices; no approval or release authority |
+| approver | APPROVER | own department, up to `approval_limit_cad`; cannot release payments |
+| finance_manager, controller_admin | ADMIN | approves the higher tiers (up to `approval_limit_cad`), releases any payment, sees everything |
+
+Two rules hold for every role: nobody approves an invoice they requested (it escalates to their manager), and
+anyone who approved a step of an invoice cannot release its payment. A delegate's actions are recorded as "acting for".
 
 ### Data notes
 
 - Historical invoices (426) are loaded with their final status. They did not run through the pipeline.
 - The history has **6 repeated (vendor, invoice number) pairs**. The unique constraint would refuse them, so the later copy is loaded without a canonical number and gets a `HISTORICAL_REPEAT_NUMBER` flag. They are logged at startup.
 - Payments with status `outstanding` (uncashed cheques) are loaded as `SENT`. The original value is kept in `source_status`.
-- `approval_policies.csv` is written in prose, so it was hand-translated to JSON in `PolicySeeds.java`, with the original text kept.
+- `approval_policies.csv` is loaded as written into the `policies` table. The conditions are prose, so approval routing applies the tiers in code (`ApprovalRoutingNode`).

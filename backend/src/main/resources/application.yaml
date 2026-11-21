@@ -53,8 +53,8 @@ app:
     duplicate-invoice-weight: 30
     split-invoice-weight: 25
     amount-outlier-weight: 20
-  extractor: ${EXTRACTOR:llm}   # fake | llm
+  extractor: ${EXTRACTOR:manual}
   llm:
-    base-url: ${LLM_BASE_URL:https://openrouter.ai/api/v1}
-    api-key: ${OPENROUTER_API_KEY:}  # never hard-code; set it in the root .env file
-    model: ${LLM_MODEL:anthropic/claude-sonnet-4.5}
+    base-url: ${LLM_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai}
+    api-key: ${LLM_API_KEY:${OPENROUTER_API_KEY:}}  # never hard-code; set it in the root .env file
+    model: ${LLM_MODEL:gemini-3.8-flash}

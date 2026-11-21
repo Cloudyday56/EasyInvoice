@@ -19,8 +19,10 @@ public interface UserRepository extends JpaRepository<User, String> {
 
     List<User> findAllByOrderById();
 
-    /** Admins who can act (active, not the read-only auditor). */
-    List<User> findByRoleAndStatusAndReadOnlyFalse(Role role, UserStatus status);
+    List<User> findByRoleAndStatus(Role role, UserStatus status);
+
+    /** Active users by their original dataset role (e.g. finance_manager, controller_admin), for approval routing. */
+    List<User> findBySourceRoleAndStatus(String sourceRole, UserStatus status);
 
     /** Always read fresh from the DB, so limits and status are never stale. */
     default User get(String id) {

@@ -46,6 +46,7 @@ public class Invoice extends BaseEntity<String> {
     @JoinColumn(name = "vendor_id")
     private Vendor vendor;                     // null until Vendor match finds it
     private String vendorNameRaw;              // vendor name as read from the document
+    private String vendorGstNumberRaw;         // vendor GST/HST number as read from the document
     private String vendorInvoiceNumber;
     // Repeat guard: one vendor cannot bill the same canonical number twice (upper-case, no spaces/dashes/leading zeros)
     private String canonicalInvoiceNumber;

@@ -35,7 +35,7 @@ public class NotificationService {
     }
 
     public void notifyAdmins(String template, Invoice invoice, String message) {
-        for (User admin : users.findByRoleAndStatusAndReadOnlyFalse(Role.ADMIN, UserStatus.ACTIVE)) {
+        for (User admin : users.findByRoleAndStatus(Role.ADMIN, UserStatus.ACTIVE)) {
             notify(admin, template, invoice, message);
         }
     }
