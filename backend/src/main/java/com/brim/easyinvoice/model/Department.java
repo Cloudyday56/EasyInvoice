@@ -1,21 +1,20 @@
 package com.brim.easyinvoice.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
 
 @Entity
 @Table(name = "departments")
 @Getter
 @Setter
 @NoArgsConstructor
-public class Department {
+public class Department extends BaseEntity<String> {
 
     @Id
     private String id;
@@ -23,5 +22,8 @@ public class Department {
     private String costCentre;
     @Column(precision = 14, scale = 2)
     private BigDecimal annualBudgetCad;
-    private String managerUserId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "manager_user_id")
+    private User manager;
 }

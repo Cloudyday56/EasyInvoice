@@ -1,5 +1,7 @@
 package com.brim.easyinvoice.notify;
 
+import com.brim.easyinvoice.model.UserStatus;
+import com.brim.easyinvoice.model.Invoice;
 import com.brim.easyinvoice.model.Notification;
 import com.brim.easyinvoice.model.Role;
 import com.brim.easyinvoice.model.User;
@@ -22,19 +24,19 @@ public class NotificationService {
         this.users = users;
     }
 
-    public void notify(String userId, String template, String invoiceId, String message) {
-        if (userId == null) return;
+    public void notify(User user, String template, Invoice invoice, String message) {
+        if (user == null) return;
         Notification n = new Notification();
-        n.setUserId(userId);
+        n.setUser(user);
         n.setTemplate(template);
-        n.setInvoiceId(invoiceId);
+        n.setInvoice(invoice);
         n.setMessage(message);
         notifications.save(n);
     }
 
-    public void notifyAdmins(String template, String invoiceId, String message) {
-        for (User admin : users.findByRoleAndStatusAndReadOnlyFalse(Role.ADMIN, "active")) {
-            notify(admin.getId(), template, invoiceId, message);
+    public void notifyAdmins(String template, Invoice invoice, String message) {
+        for (User admin : users.findByRoleAndStatusAndReadOnlyFalse(Role.ADMIN, UserStatus.ACTIVE)) {
+            notify(admin, template, invoice, message);
         }
     }
 

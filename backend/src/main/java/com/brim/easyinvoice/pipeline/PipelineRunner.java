@@ -1,5 +1,6 @@
 package com.brim.easyinvoice.pipeline;
 
+import com.brim.easyinvoice.model.FlagSeverity;
 import com.brim.easyinvoice.audit.Actor;
 import com.brim.easyinvoice.audit.AuditService;
 import com.brim.easyinvoice.model.Flag;
@@ -45,9 +46,9 @@ public class PipelineRunner {
 
     /** Invoice fields a node may change through StageResult.patch. Status is NOT here on purpose. */
     private static final Set<String> PATCHABLE_FIELDS = Set.of(
-            "documentType", "vendorId", "vendorNameRaw", "vendorInvoiceNumber", "canonicalInvoiceNumber",
+            "documentType", "vendor", "vendorNameRaw", "vendorInvoiceNumber", "canonicalInvoiceNumber",
             "invoiceDate", "dueDate", "currency", "subtotal", "gstHstAmount", "pstQstAmount", "total",
-            "fxRateToCad", "totalCad", "departmentId", "poId", "contractId", "shipToProvince", "riskScore");
+            "fxRateToCad", "totalCad", "department", "poNumberRaw", "purchaseOrder", "contract", "shipToProvince", "riskScore");
 
     private final Map<NodeName, Node> nodes = new EnumMap<>(NodeName.class);
     private final JobRepository jobs;
@@ -86,8 +87,8 @@ public class PipelineRunner {
     }
 
     /** Puts an invoice on the line at the given node. Used by intake and by human actions. */
-    public void enqueue(String invoiceId, NodeName node) {
-        jobs.enqueue(invoiceId, node, 0);
+    public void enqueue(Invoice invoice, NodeName node) {
+        jobs.enqueue(invoice, node, 0);
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -123,7 +124,7 @@ public class PipelineRunner {
             return;
         }
         invoices.updateCurrentNode(invoice.getId(), job.getNode().name());
-        SourceDocument document = invoice.getSourceDocumentId() == null ? null : documents.get(invoice.getSourceDocumentId());
+        SourceDocument document = invoice.getSourceDocument();
 
         StageResult result;
         try {
@@ -148,17 +149,14 @@ public class PipelineRunner {
     private void apply(Invoice invoice, NodeName node, StageResult result) {
         applyPatch(invoice, result.patch());
         if (result.lines() != null) {
-            invoiceLines.deleteByInvoiceId(invoice.getId());
-            for (InvoiceLine line : result.lines()) {
-                line.setInvoiceId(invoice.getId());
-                invoiceLines.save(line);
-            }
+            invoice.replaceLines(result.lines());
         }
         if (result.outcome() != Outcome.WAIT) {
-            flags.deleteByInvoiceIdAndNodeAndOverriddenByIsNull(invoice.getId(), node.name()); // re-runs replace their own flags
+            // re-runs replace their own flags; overridden flags stay
+            invoice.getFlags().removeIf(f -> node.name().equals(f.getNode()) && !f.isOverridden());
         }
         for (FlagDraft flag : result.flags()) {
-            flags.save(new Flag(invoice.getId(), node.name(), flag.code(), flag.severity(), flag.message()));
+            invoice.addFlag(new Flag(invoice, node.name(), flag.code(), flag.severity(), flag.message()));
         }
 
         Map<String, Object> payload = new HashMap<>();
@@ -171,11 +169,11 @@ public class PipelineRunner {
                 audit.system(invoice.getId(), "node." + result.outcome(), node.name(), null, null, payload);
                 stateMachine.moveTo(invoice, node.statusOnPass(), Actor.SYSTEM, node.name(), null);
                 NodeName next = node.next();
-                if (next != null) jobs.enqueue(invoice.getId(), next, stepDelayMs);
+                if (next != null) jobs.enqueue(invoice, next, stepDelayMs);
             }
             case BLOCK -> {
                 audit.system(invoice.getId(), "node.BLOCK", node.name(), null, null, payload);
-                flags.save(new Flag(invoice.getId(), node.name(), result.reasonCode(), "BLOCK", result.message()));
+                invoice.addFlag(new Flag(invoice, node.name(), result.reasonCode(), FlagSeverity.BLOCK, result.message()));
                 stateMachine.hold(invoice, result.holdQueue(), result.reasonCode(), result.message(), Actor.SYSTEM,
                         node.name());
             }
@@ -184,7 +182,7 @@ public class PipelineRunner {
                     // Waiting for a person: log it once per run. Bank re-checks are not logged (too noisy).
                     audit.system(invoice.getId(), "node.WAIT", node.name(), null, null, payload);
                 } else {
-                    jobs.enqueue(invoice.getId(), node, result.recheckAfterSeconds() * 1000L);
+                    jobs.enqueue(invoice, node, result.recheckAfterSeconds() * 1000L);
                 }
             }
             case IGNORE -> {
@@ -208,8 +206,9 @@ public class PipelineRunner {
         transaction.executeWithoutResult(tx -> {
             jobs.markFailed(job.getId(), error);
             String message = job.getNode().label() + " failed after " + maxAttempts + " attempts: " + error;
-            flags.save(new Flag(invoice.getId(), job.getNode().name(), "NODE_FAILED", "BLOCK", message));
-            stateMachine.hold(invoices.get(invoice.getId()), job.getNode().failureQueue(), "NODE_FAILED", message,
+            Invoice managed = invoices.get(invoice.getId());
+            managed.addFlag(new Flag(managed, job.getNode().name(), "NODE_FAILED", FlagSeverity.BLOCK, message));
+            stateMachine.hold(managed, job.getNode().failureQueue(), "NODE_FAILED", message,
                     Actor.SYSTEM, job.getNode().name());
         });
     }
@@ -236,14 +235,10 @@ public class PipelineRunner {
         if (document == null || document.getFileName() == null) return null;
         String marker = "block-" + node.name().toLowerCase().replace('_', '-');
         if (!document.getFileName().toLowerCase().contains(marker)) return null;
-        boolean alreadyResolved = flags.findByInvoiceIdOrderById(invoice.getId()).stream()
-                .anyMatch(f -> "DEMO_BLOCK".equals(f.getCode()) && node.name().equals(f.getNode()) && isOverridden(f));
+        boolean alreadyResolved = flags.findByInvoice_IdOrderById(invoice.getId()).stream()
+                .anyMatch(f -> "DEMO_BLOCK".equals(f.getCode()) && node.name().equals(f.getNode()) && f.isOverridden());
         if (alreadyResolved) return null;
         return StageResult.block(node.failureQueue(), "DEMO_BLOCK",
                 "Demo block requested by file name (" + marker + ")");
-    }
-
-    private static boolean isOverridden(Flag flag) {
-        return flag.getOverriddenBy() != null;
     }
 }

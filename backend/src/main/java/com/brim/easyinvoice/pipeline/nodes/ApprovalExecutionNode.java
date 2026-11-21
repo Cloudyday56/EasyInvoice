@@ -1,5 +1,6 @@
 package com.brim.easyinvoice.pipeline.nodes;
 
+import com.brim.easyinvoice.model.ApprovalStatus;
 import com.brim.easyinvoice.model.ApprovalStep;
 import com.brim.easyinvoice.model.Invoice;
 import com.brim.easyinvoice.notify.NotificationService;
@@ -41,7 +42,7 @@ public class ApprovalExecutionNode implements Node {
     @Override
     public StageResult run(Invoice invoice, NodeContext ctx) {
         List<ApprovalStep> live = steps.forInvoice(invoice.getId()).stream()
-                .filter(s -> !"VOID".equals(s.getStatus())).toList();
+                .filter(s -> s.getStatus() != ApprovalStatus.VOID).toList();
         if (live.isEmpty()) {
             return StageResult.block(HoldQueue.ROUTING_ERROR, "NO_APPROVAL_STEPS", "No approval steps to execute");
         }
@@ -55,7 +56,7 @@ public class ApprovalExecutionNode implements Node {
         }
 
         ApprovalStep step = current.get();
-        notifications.notify(step.getAssignedUserId(), "approval_needed", invoice.getId(),
+        notifications.notify(step.getAssignedUser(), "approval_needed", invoice,
                 invoice.getId() + " needs your approval (step " + step.getStepNo() + ")");
         return StageResult.waitForHuman("Waiting for step " + step.getStepNo() + ": " + step.getAssignedUserId());
     }

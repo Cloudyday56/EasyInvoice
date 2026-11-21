@@ -1,5 +1,8 @@
 package com.brim.easyinvoice.pipeline;
 
+import com.brim.easyinvoice.model.PaymentStatus;
+import com.brim.easyinvoice.model.FlagSeverity;
+import com.brim.easyinvoice.model.ApprovalStatus;
 import com.brim.easyinvoice.audit.Actor;
 import com.brim.easyinvoice.audit.AuditService;
 import com.brim.easyinvoice.model.ApprovalStep;
@@ -63,10 +66,10 @@ public class HumanActionService {
         authorization.authorize(user, Action.APPROVE_INVOICE, invoice);
         ApprovalStep step = currentStep(invoice);
 
-        recordDecision(step, "APPROVED", user, comment);
-        audit.record(Actor.of(user, step.getActingFor()), invoice.getId(), null, "approval.approved",
+        recordDecision(step, ApprovalStatus.APPROVED, user, comment);
+        audit.record(Actor.of(user, step.getActingForId()), invoice.getId(), null, "approval.approved",
                 NodeName.APPROVAL_EXECUTION.name(), null, null, details("stepNo", step.getStepNo(), "comment", comment));
-        runner.enqueue(invoice.getId(), NodeName.APPROVAL_EXECUTION);
+        runner.enqueue(invoice, NodeName.APPROVAL_EXECUTION);
     }
 
     public void reject(User user, String invoiceId, String reason) {
@@ -75,10 +78,10 @@ public class HumanActionService {
         authorization.authorize(user, Action.APPROVE_INVOICE, invoice);
         ApprovalStep step = currentStep(invoice);
 
-        recordDecision(step, "REJECTED", user, reason);
-        audit.record(Actor.of(user, step.getActingFor()), invoice.getId(), null, "approval.rejected",
+        recordDecision(step, ApprovalStatus.REJECTED, user, reason);
+        audit.record(Actor.of(user, step.getActingForId()), invoice.getId(), null, "approval.rejected",
                 NodeName.APPROVAL_EXECUTION.name(), null, null, details("stepNo", step.getStepNo(), "reason", reason));
-        stateMachine.reject(invoice, Actor.of(user, step.getActingFor()), reason);
+        stateMachine.reject(invoice, Actor.of(user, step.getActingForId()), reason);
     }
 
     /** "Return to AP": back to the Validation failed queue; existing approvals are voided. */
@@ -88,9 +91,9 @@ public class HumanActionService {
         authorization.authorize(user, Action.APPROVE_INVOICE, invoice);
         ApprovalStep step = currentStep(invoice);
 
-        recordDecision(step, "RETURNED", user, reason);
+        recordDecision(step, ApprovalStatus.RETURNED, user, reason);
         voidOpenSteps(invoice.getId());
-        Actor actor = Actor.of(user, step.getActingFor());
+        Actor actor = Actor.of(user, step.getActingForId());
         audit.record(actor, invoice.getId(), null, "approval.returned", NodeName.APPROVAL_EXECUTION.name(),
                 null, null, details("stepNo", step.getStepNo(), "reason", reason));
         stateMachine.hold(invoice, HoldQueue.VALIDATION_FAILED, "RETURNED_BY_APPROVER", reason, actor,
@@ -106,12 +109,12 @@ public class HumanActionService {
         authorization.authorize(user, Action.RESOLVE_HOLD, invoice);
 
         // The blocking flags stay visible, marked as overridden with the Admin's written reason.
-        for (Flag flag : flags.findByInvoiceIdAndSeverityAndOverriddenByIsNull(invoice.getId(), "BLOCK")) {
-            flag.setOverriddenBy(user.getId());
+        for (Flag flag : flags.findByInvoice_IdAndSeverityAndOverriddenByIsNull(invoice.getId(), FlagSeverity.BLOCK)) {
+            flag.setOverriddenBy(user);
             flag.setOverrideReason(reason);
         }
         NodeName resumeAt = stateMachine.releaseHold(invoice, Actor.of(user), reason);
-        runner.enqueue(invoice.getId(), resumeAt);
+        runner.enqueue(invoice, resumeAt);
     }
 
     public void rejectFromHold(User user, String invoiceId, String reason) {
@@ -127,18 +130,18 @@ public class HumanActionService {
         Payment payment = payments.get(paymentId);
         Invoice invoice = invoices.get(payment.getInvoiceId());
         authorization.authorize(user, Action.RELEASE_PAYMENT, invoice);
-        if (!"SCHEDULED".equals(payment.getStatus())) {
+        if (payment.getStatus() != PaymentStatus.SCHEDULED) {
             throw new BadRequestException("Payment " + paymentId + " is " + payment.getStatus() + ", not SCHEDULED");
         }
 
-        payment.setStatus("RELEASED");
-        payment.setReleasedBy(user.getId());
+        payment.setStatus(PaymentStatus.RELEASED);
+        payment.setReleasedBy(user);
         payment.setReleasedAt(OffsetDateTime.now());
         audit.record(Actor.of(user), invoice.getId(), payment.getId(), "payment.released",
                 NodeName.PAYMENT_RELEASE.name(), null, null,
                 details("amount", payment.getAmount(), "currency", payment.getCurrency(), "method", payment.getMethod()));
         stateMachine.moveTo(invoice, InvoiceStatus.RELEASED, Actor.of(user), NodeName.PAYMENT_RELEASE.name(), null);
-        runner.enqueue(invoice.getId(), NodeName.PAYMENT_RELEASE);
+        runner.enqueue(invoice, NodeName.PAYMENT_RELEASE);
     }
 
     // ---------- helpers ----------
@@ -149,9 +152,9 @@ public class HumanActionService {
     }
 
     /** The step is a managed entity, so these changes are saved when the transaction commits. */
-    private static void recordDecision(ApprovalStep step, String status, User user, String comment) {
+    private static void recordDecision(ApprovalStep step, ApprovalStatus status, User user, String comment) {
         step.setStatus(status);
-        step.setActedBy(user.getId());
+        step.setActedBy(user);
         step.setActedAt(OffsetDateTime.now());
         step.setComment(comment);
     }
@@ -159,7 +162,7 @@ public class HumanActionService {
     /** Existing approvals no longer count once the invoice goes back to AP. */
     private void voidOpenSteps(String invoiceId) {
         for (ApprovalStep step : steps.forInvoice(invoiceId)) {
-            if (step.isPending() || step.isApproved()) step.setStatus("VOID");
+            if (step.isPending() || step.isApproved()) step.setStatus(ApprovalStatus.VOID);
         }
     }
 

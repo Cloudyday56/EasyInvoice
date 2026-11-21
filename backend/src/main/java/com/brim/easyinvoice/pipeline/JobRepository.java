@@ -1,5 +1,6 @@
 package com.brim.easyinvoice.pipeline;
 
+import com.brim.easyinvoice.model.Invoice;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.QueryHint;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -14,7 +15,7 @@ import java.util.Optional;
 /** The pipeline's work queue, on plain JPA. */
 public interface JobRepository extends JpaRepository<Job, Long> {
 
-    boolean existsByInvoiceIdAndNodeAndStatus(String invoiceId, NodeName node, String status);
+    boolean existsByInvoice_IdAndNodeAndStatus(String invoiceId, NodeName node, JobStatus status);
 
     /**
      * The next due job, locked with SELECT ... FOR UPDATE SKIP LOCKED (lock timeout -2 means "skip locked"),
@@ -22,16 +23,16 @@ public interface JobRepository extends JpaRepository<Job, Long> {
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "-2"))
-    Optional<Job> findFirstByStatusAndRunAfterLessThanEqualOrderByRunAfterAscIdAsc(String status, OffsetDateTime now);
+    Optional<Job> findFirstByStatusAndRunAfterLessThanEqualOrderByRunAfterAscIdAsc(JobStatus status, OffsetDateTime now);
 
-    List<Job> findByStatus(String status);
+    List<Job> findByStatus(JobStatus status);
 
     /** Queues a node run. Does nothing if the same run is already waiting (no double work). */
     @Transactional
-    default void enqueue(String invoiceId, NodeName node, long delayMs) {
-        if (existsByInvoiceIdAndNodeAndStatus(invoiceId, node, "PENDING")) return;
+    default void enqueue(Invoice invoice, NodeName node, long delayMs) {
+        if (existsByInvoice_IdAndNodeAndStatus(invoice.getId(), node, JobStatus.PENDING)) return;
         Job job = new Job();
-        job.setInvoiceId(invoiceId);
+        job.setInvoice(invoice);
         job.setNode(node);
         job.setRunAfter(OffsetDateTime.now().plusNanos(delayMs * 1_000_000));
         save(job);
@@ -40,9 +41,9 @@ public interface JobRepository extends JpaRepository<Job, Long> {
     /** Takes the next due job and marks it RUNNING. */
     @Transactional
     default Optional<Job> claimNext() {
-        Optional<Job> next = findFirstByStatusAndRunAfterLessThanEqualOrderByRunAfterAscIdAsc("PENDING", OffsetDateTime.now());
+        Optional<Job> next = findFirstByStatusAndRunAfterLessThanEqualOrderByRunAfterAscIdAsc(JobStatus.PENDING, OffsetDateTime.now());
         next.ifPresent(job -> {
-            job.setStatus("RUNNING");
+            job.setStatus(JobStatus.RUNNING);
             job.setAttempts(job.getAttempts() + 1);
         });
         return next;
@@ -50,13 +51,13 @@ public interface JobRepository extends JpaRepository<Job, Long> {
 
     @Transactional
     default void markDone(long jobId) {
-        findById(jobId).ifPresent(job -> job.setStatus("DONE"));
+        findById(jobId).ifPresent(job -> job.setStatus(JobStatus.DONE));
     }
 
     @Transactional
     default void retryLater(long jobId, String error, long delayMs) {
         findById(jobId).ifPresent(job -> {
-            job.setStatus("PENDING");
+            job.setStatus(JobStatus.PENDING);
             job.setLastError(error);
             job.setRunAfter(OffsetDateTime.now().plusNanos(delayMs * 1_000_000));
         });
@@ -65,7 +66,7 @@ public interface JobRepository extends JpaRepository<Job, Long> {
     @Transactional
     default void markFailed(long jobId, String error) {
         findById(jobId).ifPresent(job -> {
-            job.setStatus("FAILED");
+            job.setStatus(JobStatus.FAILED);
             job.setLastError(error);
         });
     }
@@ -73,6 +74,6 @@ public interface JobRepository extends JpaRepository<Job, Long> {
     /** After a restart, anything left RUNNING was interrupted; run it again. */
     @Transactional
     default void requeueInterrupted() {
-        findByStatus("RUNNING").forEach(job -> job.setStatus("PENDING"));
+        findByStatus(JobStatus.RUNNING).forEach(job -> job.setStatus(JobStatus.PENDING));
     }
 }

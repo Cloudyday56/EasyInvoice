@@ -60,7 +60,7 @@ public class VendorMatchNode implements Node {
         // The DB has a UNIQUE (vendor_id, canonical_invoice_number) constraint. We check first so the
         // invoice is parked with a clear reason instead of failing on the constraint.
         String canonical = InvoiceNumbers.canonical(invoice.getVendorInvoiceNumber());
-        if (invoices.existsByVendorIdAndCanonicalInvoiceNumberAndIdNot(vendor.getId(), canonical, invoice.getId())) {
+        if (invoices.existsByVendor_IdAndCanonicalInvoiceNumberAndIdNot(vendor.getId(), canonical, invoice.getId())) {
             return StageResult.block(HoldQueue.VALIDATION_FAILED, "REPEAT_INVOICE_NUMBER",
                     vendor.getLegalName() + " already billed invoice number " + invoice.getVendorInvoiceNumber());
         }
@@ -76,7 +76,7 @@ public class VendorMatchNode implements Node {
         }
 
         Map<String, Object> patch = new HashMap<>();
-        patch.put("vendorId", vendor.getId());
+        patch.put("vendor", vendor);
         patch.put("canonicalInvoiceNumber", canonical);
         patch.put("fxRateToCad", rate);
         patch.put("totalCad", invoice.getTotal().multiply(rate).setScale(2, RoundingMode.HALF_UP));

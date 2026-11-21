@@ -12,10 +12,10 @@ import java.util.stream.Collectors;
 
 public interface ApprovalStepRepository extends JpaRepository<ApprovalStep, Long> {
 
-    @Query("select s from ApprovalStep s where s.invoiceId = :invoiceId order by s.stepNo, s.id")
+    @Query("select s from ApprovalStep s where s.invoice.id = :invoiceId order by s.stepNo, s.id")
     List<ApprovalStep> forInvoice(@Param("invoiceId") String invoiceId);
 
-    @Query("select s from ApprovalStep s where s.assignedUserId = :userId and s.status = 'PENDING' order by s.createdAt")
+    @Query("select s from ApprovalStep s where s.assignedUser.id = :userId and s.status = com.brim.easyinvoice.model.ApprovalStatus.PENDING order by s.createdAt")
     List<ApprovalStep> pendingAssignedTo(@Param("userId") String userId);
 
     /** All steps grouped by invoice: one query for list screens instead of one per invoice. */

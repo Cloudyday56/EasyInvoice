@@ -1,9 +1,6 @@
 package com.brim.easyinvoice.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -14,17 +11,25 @@ import java.time.OffsetDateTime;
 
 /** status: SCHEDULED -> RELEASED -> SENT -> SETTLED, or FAILED. */
 @Entity
-@Table(name = "payments")
+@Table(name = "payments", indexes = @Index(name = "idx_payments_invoice", columnList = "invoice_id"))
 @Getter
 @Setter
 @NoArgsConstructor
-public class Payment {
+public class Payment extends BaseEntity<String> {
 
     @Id
     private String id;
-    private String invoiceId;
-    private String vendorId;
-    private String method;            // EFT | CHEQUE | CARD
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "invoice_id", nullable = false)
+    private Invoice invoice;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "vendor_id")
+    private Vendor vendor;
+
+    @Enumerated(EnumType.STRING)
+    private PaymentMethod method;
     private LocalDate scheduledDate;
     private LocalDate paidDate;
     private String currency;
@@ -37,14 +42,32 @@ public class Payment {
     @Column(precision = 14, scale = 2)
     private BigDecimal discountTaken;
     private String reference;
-    private String status;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private PaymentStatus status;
     private String sourceStatus;      // status as written in payments.csv (history only)
     @Column(unique = true)
     private String idempotencyKey;    // = payment id; a retry can never pay twice
-    private String preparedBy;
-    private String releasedBy;
+    private String preparedBy;        // a user id, or "system" when the pipeline scheduled it
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "released_by")
+    private User releasedBy;
     private OffsetDateTime releasedAt;
     private OffsetDateTime sentAt;
     @Column(columnDefinition = "text")
     private String failureReason;
+
+    // Id shortcuts: read the foreign key without loading the related row (safe on a lazy reference).
+
+    public String getInvoiceId() {
+        return invoice == null ? null : invoice.getId();
+    }
+
+    public String getVendorId() {
+        return vendor == null ? null : vendor.getId();
+    }
+
+    public String getReleasedById() {
+        return releasedBy == null ? null : releasedBy.getId();
+    }
 }

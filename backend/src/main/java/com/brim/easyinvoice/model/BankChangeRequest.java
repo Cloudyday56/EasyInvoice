@@ -1,13 +1,13 @@
 package com.brim.easyinvoice.model;
 
-import java.time.LocalDate;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
 
 /** A change to a vendor's bank details. Only an Admin other than the requester may verify it. */
 @Entity
@@ -15,16 +15,28 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class BankChangeRequest {
+public class BankChangeRequest extends BaseEntity<String> {
 
     @Id
     private String id;
-    private String vendorId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "vendor_id")
+    private Vendor vendor;
+
     private LocalDate changedAt;
-    private String changedByUserId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "changed_by_user_id")
+    private User changedBy;
+
     private String requestChannel;
     private boolean verifiedByCallback;
-    private String verifiedByUserId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "verified_by_user_id")
+    private User verifiedBy;
+
     private String oldAccountLast4;
     private String newAccountLast4;
     private String status = "PENDING";   // PENDING | VERIFIED | REJECTED

@@ -1,5 +1,10 @@
 package com.brim.easyinvoice.web;
 
+import com.brim.easyinvoice.model.VendorStatus;
+import com.brim.easyinvoice.web.dto.UserDto;
+import com.brim.easyinvoice.web.dto.NotificationDto;
+import com.brim.easyinvoice.web.dto.DepartmentDto;
+import org.springframework.transaction.annotation.Transactional;
 import com.brim.easyinvoice.model.Notification;
 import com.brim.easyinvoice.model.User;
 import com.brim.easyinvoice.notify.NotificationService;
@@ -21,7 +26,7 @@ import java.util.Map;
 public class UserController {
 
     /** What the UI needs to show a vendor's name; bank details and tax numbers stay on the server. */
-    public record VendorOption(String id, String legalName, String category, String status) {
+    public record VendorOption(String id, String legalName, String category, VendorStatus status) {
     }
 
     private final UserRepository users;
@@ -41,28 +46,32 @@ public class UserController {
 
     /** Public on purpose: the user switcher needs the list before anyone is "logged in". */
     @GetMapping("/users")
-    public List<User> allUsers() {
-        return users.findAllByOrderById();
+    @Transactional(readOnly = true)
+    public List<UserDto> allUsers() {
+        return users.findAllByOrderById().stream().map(UserDto::from).toList();
     }
 
     @GetMapping("/me")
-    public User me(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId) {
-        return currentUser.require(userId);
+    @Transactional(readOnly = true)
+    public UserDto me(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId) {
+        return UserDto.from(currentUser.require(userId));
     }
 
     /** Lookup data for the UI (names for ids). */
     @GetMapping("/lookups")
+    @Transactional(readOnly = true)
     public Map<String, Object> lookups(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId) {
         currentUser.require(userId);
         return Map.of(
                 "vendors", vendors.findAll(Sort.by("legalName")).stream()
                         .map(v -> new VendorOption(v.getId(), v.getLegalName(), v.getCategory(), v.getStatus())).toList(),
-                "departments", departments.findAll(Sort.by("id")));
+                "departments", departments.findAll(Sort.by("id")).stream().map(DepartmentDto::from).toList());
     }
 
     @GetMapping("/notifications")
-    public List<Notification> myNotifications(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId) {
-        return notifications.forUser(currentUser.require(userId).getId());
+    @Transactional(readOnly = true)
+    public List<NotificationDto> myNotifications(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId) {
+        return notifications.forUser(currentUser.require(userId).getId()).stream().map(NotificationDto::from).toList();
     }
 
     @PostMapping("/notifications/read")

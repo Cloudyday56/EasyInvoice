@@ -1,5 +1,6 @@
 package com.brim.easyinvoice.repo;
 
+import org.springframework.data.jpa.repository.EntityGraph;
 import com.brim.easyinvoice.model.Invoice;
 import com.brim.easyinvoice.model.InvoiceStatus;
 import com.brim.easyinvoice.web.NotFoundException;
@@ -14,6 +15,11 @@ import java.util.List;
 import java.util.Optional;
 
 public interface InvoiceRepository extends JpaRepository<Invoice, String> {
+
+    /** Loads the invoice together with the rows a pipeline node reads, so they stay usable outside a transaction. */
+    @Override
+    @EntityGraph(attributePaths = {"vendor", "department", "requester", "sourceDocument", "purchaseOrder", "contract"})
+    Optional<Invoice> findById(String id);
 
     default Invoice get(String id) {
         return findById(id).orElseThrow(() -> new NotFoundException("Invoice " + id + " not found"));
@@ -32,10 +38,10 @@ public interface InvoiceRepository extends JpaRepository<Invoice, String> {
         return findByStatusesByDueDate(List.of(InvoiceStatus.ON_HOLD, InvoiceStatus.ON_HOLD_VENDOR));
     }
 
-    Optional<Invoice> findBySourceDocumentId(Long sourceDocumentId);
+    Optional<Invoice> findBySourceDocument_Id(Long sourceDocumentId);
 
     /** Repeat guard: does another invoice from this vendor already have this canonical number? */
-    boolean existsByVendorIdAndCanonicalInvoiceNumberAndIdNot(String vendorId, String canonicalNumber, String invoiceId);
+    boolean existsByVendor_IdAndCanonicalInvoiceNumberAndIdNot(String vendorId, String canonicalNumber, String invoiceId);
 
     /** Written before a node runs, so the UI can show which node is working. */
     @Modifying

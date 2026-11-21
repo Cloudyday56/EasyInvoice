@@ -93,7 +93,7 @@ public class AuthorizationService {
                     || isAssignedToAnyStep(user, steps)
                     ? Decision.allow()
                     : Decision.deny("Approvers only see their own department's invoices");
-            case EMPLOYEE -> user.getId().equals(invoice.getRequesterUserId())
+            case EMPLOYEE -> user.getId().equals(invoice.getRequesterId())
                     ? Decision.allow()
                     : Decision.deny("Employees only see invoices they submitted");
         };
@@ -108,7 +108,7 @@ public class AuthorizationService {
             return Decision.deny("Invoice is not waiting for approval (status " + invoice.getStatus() + ")");
         }
         // Separation of duties #1: nobody approves their own invoice.
-        if (user.getId().equals(invoice.getRequesterUserId())) {
+        if (user.getId().equals(invoice.getRequesterId())) {
             return Decision.deny("No self-approval: you requested this invoice");
         }
         Optional<ApprovalStep> current = currentStep(steps);
@@ -156,7 +156,7 @@ public class AuthorizationService {
         }
         // Separation of duties #2: whoever approved any step cannot release the payment.
         boolean approvedAStep = steps.stream()
-                .anyMatch(s -> s.isApproved() && user.getId().equals(s.getActedBy()));
+                .anyMatch(s -> s.isApproved() && user.getId().equals(s.getActedById()));
         if (approvedAStep) {
             return Decision.deny("Approver cannot release: you approved a step of this invoice");
         }

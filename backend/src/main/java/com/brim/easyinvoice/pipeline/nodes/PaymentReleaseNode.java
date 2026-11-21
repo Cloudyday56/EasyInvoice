@@ -1,5 +1,7 @@
 package com.brim.easyinvoice.pipeline.nodes;
 
+import com.brim.easyinvoice.model.PaymentStatus;
+import com.brim.easyinvoice.model.PaymentMethod;
 import com.brim.easyinvoice.model.Invoice;
 import com.brim.easyinvoice.model.Payment;
 import com.brim.easyinvoice.model.VirtualCard;
@@ -60,38 +62,38 @@ public class PaymentReleaseNode implements Node {
         }
 
         switch (payment.getStatus()) {
-            case "SCHEDULED":
+            case SCHEDULED:
                 return StageResult.waitForHuman("Payment " + payment.getId() + " is waiting for an Admin to release it");
 
-            case "RELEASED":
-                if ("CARD".equals(payment.getMethod())) {
+            case RELEASED:
+                if (payment.getMethod() == PaymentMethod.CARD) {
                     VirtualCard card = new VirtualCard();
-                    card.setPaymentId(payment.getId());
+                    card.setPayment(payment);
                     card.setMaskedNumber("**** **** **** " + String.format("%04d", ThreadLocalRandom.current().nextInt(10000)));
                     card.setAmountLimit(payment.getAmount());
-                    card.setMerchantLock(payment.getVendorId());
+                    card.setMerchantLock(payment.getVendor());
                     card.setExpiresAt(OffsetDateTime.now().plusDays(7));
                     virtualCards.save(card);
                 }
                 String reference = bank.send(payment);
-                payment.setStatus("SENT");
+                payment.setStatus(PaymentStatus.SENT);
                 payment.setReference(reference);
                 payment.setSentAt(OffsetDateTime.now());
                 payments.save(payment);
                 return StageResult.recheckIn(RECHECK_SECONDS, "Sent to bank, reference " + reference);
 
-            case "SENT":
+            case SENT:
                 BankStatus status = bank.status(payment.getId());
                 if (status == BankStatus.SETTLED) {
-                    payment.setStatus("SETTLED");
+                    payment.setStatus(PaymentStatus.SETTLED);
                     payment.setPaidDate(LocalDate.now());
                     payments.save(payment);
-                    notifications.notify(invoice.getRequesterUserId(), "payment_settled", invoice.getId(),
+                    notifications.notify(invoice.getRequester(), "payment_settled", invoice,
                             "Payment for " + invoice.getId() + " settled");
                     return StageResult.pass("Payment " + payment.getId() + " settled");
                 }
                 if (status == BankStatus.FAILED) {
-                    payment.setStatus("FAILED");
+                    payment.setStatus(PaymentStatus.FAILED);
                     payment.setFailureReason("Bank reported failure");
                     payments.save(payment);
                     return StageResult.block(HoldQueue.PAYMENT_EXCEPTIONS, "PAYMENT_FAILED",
@@ -102,7 +104,7 @@ public class PaymentReleaseNode implements Node {
                 }
                 return StageResult.recheckIn(RECHECK_SECONDS, "Waiting for settlement");
 
-            case "SETTLED":
+            case SETTLED:
                 return StageResult.pass("Payment " + payment.getId() + " already settled");
 
             default:

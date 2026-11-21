@@ -1,45 +1,64 @@
 package com.brim.easyinvoice.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.CreationTimestamp;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 
 /** severity is FLAG (warning that travels with the invoice) or BLOCK (stopped the line). */
 @Entity
-@Table(name = "flags")
+@Table(name = "flags", indexes = @Index(name = "idx_flags_invoice", columnList = "invoice_id"))
 @Getter
 @Setter
 @NoArgsConstructor
-public class Flag {
+public class Flag extends BaseEntity<Long> {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    private String invoiceId;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "invoice_id", nullable = false)
+    private Invoice invoice;
+
     private String node;
     private String code;
-    private String severity;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private FlagSeverity severity;
     @Column(columnDefinition = "text")
     private String message;
-    @CreationTimestamp
+    @org.hibernate.annotations.CreationTimestamp
     private OffsetDateTime createdAt;
-    private String overriddenBy;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "overridden_by")
+    private User overriddenBy;
     private String overrideReason;
 
-    public Flag(String invoiceId, String node, String code, String severity, String message) {
-        this.invoiceId = invoiceId;
+    public Flag(Invoice invoice, String node, String code, FlagSeverity severity, String message) {
+        this.invoice = invoice;
         this.node = node;
         this.code = code;
         this.severity = severity;
         this.message = message;
+    }
+
+    public boolean isOverridden() {
+        return overriddenBy != null;
+    }
+
+    // Id shortcuts: read the foreign key without loading the related row (safe on a lazy reference).
+
+    public String getInvoiceId() {
+        return invoice == null ? null : invoice.getId();
+    }
+
+    public String getOverriddenById() {
+        return overriddenBy == null ? null : overriddenBy.getId();
     }
 }

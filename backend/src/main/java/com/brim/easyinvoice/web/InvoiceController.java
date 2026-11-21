@@ -1,14 +1,18 @@
 package com.brim.easyinvoice.web;
 
+import com.brim.easyinvoice.web.dto.PaymentDto;
+import com.brim.easyinvoice.web.dto.InvoiceLineDto;
+import com.brim.easyinvoice.web.dto.InvoiceDto;
+import com.brim.easyinvoice.web.dto.FlagDto;
+import com.brim.easyinvoice.web.dto.ApprovalStepDto;
+import org.springframework.transaction.annotation.Transactional;
 import com.brim.easyinvoice.audit.AuditEvent;
 import com.brim.easyinvoice.audit.AuditService;
 import com.brim.easyinvoice.intake.FileStorage;
 import com.brim.easyinvoice.intake.IntakeService;
 import com.brim.easyinvoice.model.ApprovalStep;
-import com.brim.easyinvoice.model.Flag;
+import com.brim.easyinvoice.model.DocumentChannel;
 import com.brim.easyinvoice.model.Invoice;
-import com.brim.easyinvoice.model.InvoiceLine;
-import com.brim.easyinvoice.model.Payment;
 import com.brim.easyinvoice.model.SourceDocument;
 import com.brim.easyinvoice.model.User;
 import com.brim.easyinvoice.pipeline.HumanActionService;
@@ -42,11 +46,11 @@ public class InvoiceController {
 
     /** The invoice page: everything in one response. */
     public record InvoiceDetail(
-            Invoice invoice,
-            List<InvoiceLine> lines,
-            List<Flag> flags,
-            List<ApprovalStep> approvalSteps,
-            List<Payment> payments,
+            InvoiceDto invoice,
+            List<InvoiceLineDto> lines,
+            List<FlagDto> flags,
+            List<ApprovalStepDto> approvalSteps,
+            List<PaymentDto> payments,
             List<AuditEvent> auditEvents,
             DocumentInfo document,
             List<PipelineProgress.NodeProgress> pipeline,
@@ -54,7 +58,7 @@ public class InvoiceController {
     }
 
     /** Source document without the server's file path. */
-    public record DocumentInfo(long id, String channel, String fileName, String contentType, String sender,
+    public record DocumentInfo(long id, DocumentChannel channel, String fileName, String contentType, String sender,
                                String subject, String body) {
         static DocumentInfo of(SourceDocument d) {
             return new DocumentInfo(d.getId(), d.getChannel(), d.getFileName(), d.getContentType(), d.getSender(),
@@ -100,15 +104,18 @@ public class InvoiceController {
 
     /** Only the invoices this user may see (same rule as the detail page, applied to each row). */
     @GetMapping
-    public List<Invoice> list(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId) {
+    @Transactional(readOnly = true)
+    public List<InvoiceDto> list(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId) {
         User user = currentUser.require(userId);
         Map<String, List<ApprovalStep>> stepsByInvoice = steps.allGroupedByInvoice();
         return invoices.findAllByOrderByCreatedAtDescIdDesc().stream()
                 .filter(inv -> authorization.canView(user, inv, stepsByInvoice.getOrDefault(inv.getId(), List.of())))
+                .map(InvoiceDto::from)
                 .toList();
     }
 
     @GetMapping("/{id}")
+    @Transactional(readOnly = true)
     public InvoiceDetail detail(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId,
                                 @PathVariable String id) {
         User user = currentUser.require(userId);
@@ -117,22 +124,27 @@ public class InvoiceController {
 
         List<ApprovalStep> invoiceSteps = steps.forInvoice(id);
         List<AuditEvent> events = audit.forInvoice(id);
-        SourceDocument doc = invoice.getSourceDocumentId() == null ? null : documents.get(invoice.getSourceDocumentId());
-        return new InvoiceDetail(invoice, invoiceLines.findByInvoiceIdOrderByLineNo(id), flags.findByInvoiceIdOrderById(id),
-                invoiceSteps, payments.findByInvoiceIdOrderById(id), events, doc == null ? null : DocumentInfo.of(doc),
+        SourceDocument doc = invoice.getSourceDocument();
+        return new InvoiceDetail(InvoiceDto.from(invoice),
+                invoiceLines.findByInvoice_IdOrderByLineNo(id).stream().map(InvoiceLineDto::from).toList(),
+                flags.findByInvoice_IdOrderById(id).stream().map(FlagDto::from).toList(),
+                invoiceSteps.stream().map(ApprovalStepDto::from).toList(),
+                payments.findByInvoice_IdOrderById(id).stream().map(PaymentDto::from).toList(),
+                events, doc == null ? null : DocumentInfo.of(doc),
                 PipelineProgress.compute(invoice, events, json),
                 authorization.allowedActions(user, invoice, invoiceSteps));
     }
 
     /** The original file, for the document viewer. */
     @GetMapping("/{id}/document")
+    @Transactional(readOnly = true)
     public ResponseEntity<byte[]> document(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId,
                                            @PathVariable String id) {
         User user = currentUser.require(userId);
         Invoice invoice = invoices.get(id);
         authorization.authorize(user, Action.VIEW_INVOICE, invoice);
-        if (invoice.getSourceDocumentId() == null) throw new NotFoundException("Invoice " + id + " has no document");
-        SourceDocument doc = documents.get(invoice.getSourceDocumentId());
+        SourceDocument doc = invoice.getSourceDocument();
+        if (doc == null) throw new NotFoundException("Invoice " + id + " has no document");
         if (!doc.hasFile()) throw new NotFoundException("Document has no file");
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(doc.getContentType()))

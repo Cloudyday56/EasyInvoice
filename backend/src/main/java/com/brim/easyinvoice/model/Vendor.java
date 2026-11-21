@@ -1,13 +1,13 @@
 package com.brim.easyinvoice.model;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 
 /** bank_* columns are never sent to the UI: the vendor lookup endpoint returns a slimmer record. */
 @Entity
@@ -15,10 +15,11 @@ import java.time.LocalDate;
 @Getter
 @Setter
 @NoArgsConstructor
-public class Vendor {
+public class Vendor extends BaseEntity<String> {
 
     @Id
     private String id;
+    @Column(nullable = false)
     private String legalName;
     private String category;
     private String defaultGlAccount;
@@ -37,10 +38,12 @@ public class Vendor {
     private LocalDate bankDetailsUpdatedAt;
     private String apContactEmail;
     private boolean requiresPo;
-    private String status;            // active | pending_review | on_hold | blocked
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private VendorStatus status = VendorStatus.ACTIVE;
     private LocalDate onboardedAt;
 
     public boolean isActive() {
-        return "active".equals(status);
+        return status == VendorStatus.ACTIVE;
     }
 }

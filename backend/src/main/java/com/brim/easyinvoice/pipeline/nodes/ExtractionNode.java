@@ -1,5 +1,7 @@
 package com.brim.easyinvoice.pipeline.nodes;
 
+import com.brim.easyinvoice.repo.PurchaseOrderRepository;
+import com.brim.easyinvoice.model.DocumentType;
 import com.brim.easyinvoice.extraction.ExtractedInvoice;
 import com.brim.easyinvoice.extraction.Extractor;
 import com.brim.easyinvoice.intake.FileStorage;
@@ -30,8 +32,10 @@ public class ExtractionNode implements Node {
 
     private final Extractor extractor;
     private final FileStorage storage;
+    private final PurchaseOrderRepository purchaseOrders;
 
-    public ExtractionNode(Extractor extractor, FileStorage storage) {
+    public ExtractionNode(Extractor extractor, FileStorage storage, PurchaseOrderRepository purchaseOrders) {
+        this.purchaseOrders = purchaseOrders;
         this.extractor = extractor;
         this.storage = storage;
     }
@@ -61,7 +65,7 @@ public class ExtractionNode implements Node {
 
         // Keys are Invoice field names. HashMap, not Map.of: extracted values may be null.
         Map<String, Object> patch = new HashMap<>();
-        patch.put("documentType", data.documentType() == null ? "INVOICE" : data.documentType());
+        patch.put("documentType", DocumentType.parse(data.documentType()));
         patch.put("vendorNameRaw", data.vendorName());
         patch.put("vendorInvoiceNumber", data.invoiceNumber());
         patch.put("invoiceDate", data.invoiceDate());
@@ -71,7 +75,8 @@ public class ExtractionNode implements Node {
         patch.put("gstHstAmount", data.gstHstAmount());
         patch.put("pstQstAmount", data.pstQstAmount());
         patch.put("total", data.total());
-        patch.put("poId", data.poNumber());
+        patch.put("poNumberRaw", data.poNumber());
+        patch.put("purchaseOrder", data.poNumber() == null ? null : purchaseOrders.findById(data.poNumber()).orElse(null));
         patch.put("shipToProvince", data.shipToProvince());
 
         List<InvoiceLine> lines = new ArrayList<>();
@@ -79,13 +84,13 @@ public class ExtractionNode implements Node {
         for (int i = 0; i < extractedLines.size(); i++) {
             ExtractedInvoice.Line l = extractedLines.get(i);
             boolean federalTax = l.taxCode() == null || l.taxCode().startsWith("HST") || l.taxCode().startsWith("GST");
-            InvoiceLine line = new InvoiceLine();   // the runner sets invoiceId when it saves the lines
+            InvoiceLine line = new InvoiceLine();   // Invoice.replaceLines links it to the invoice
             line.setLineNo(i + 1);
             line.setDescription(l.description());
             line.setQuantity(l.quantity());
             line.setUnitPrice(l.unitPrice());
             line.setAmount(l.amount());
-            line.setDepartmentId(invoice.getDepartmentId());
+            line.setDepartment(invoice.getDepartment());
             line.setGstHstCode(federalTax ? l.taxCode() : null);
             line.setPstQstCode(federalTax ? null : l.taxCode());
             lines.add(line);

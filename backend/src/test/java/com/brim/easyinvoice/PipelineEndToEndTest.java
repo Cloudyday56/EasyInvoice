@@ -5,6 +5,15 @@ import com.brim.easyinvoice.db.DemoResetService;
 import com.brim.easyinvoice.intake.IntakeService;
 import com.brim.easyinvoice.model.Flag;
 import com.brim.easyinvoice.model.Invoice;
+import com.brim.easyinvoice.model.InvoiceLine;
+import com.brim.easyinvoice.model.PaymentStatus;
+import com.brim.easyinvoice.model.Vendor;
+import com.brim.easyinvoice.repo.DepartmentRepository;
+import com.brim.easyinvoice.repo.InvoiceLineRepository;
+import com.brim.easyinvoice.repo.VendorRepository;
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import com.brim.easyinvoice.model.InvoiceStatus;
 import com.brim.easyinvoice.model.Payment;
 import com.brim.easyinvoice.model.User;
@@ -84,12 +93,22 @@ class PipelineEndToEndTest {
     @Autowired UserRepository users;
     @Autowired FlagRepository flags;
     @Autowired FxRateRepository fxRates;
+    @Autowired VendorRepository vendors;
+    @Autowired DepartmentRepository departments;
+    @Autowired InvoiceLineRepository invoiceLines;
+    @Autowired PlatformTransactionManager transactionManager;
+    TransactionTemplate transaction;
     @Autowired ObjectMapper json;
     @Autowired InvoiceController invoiceController;
     @Autowired PaymentController paymentController;
     @Autowired QueueController queueController;
     @Autowired ApprovalController approvalController;
     @Autowired UserController userController;
+
+    @BeforeEach
+    void setUpTransactions() {
+        transaction = new TransactionTemplate(transactionManager);
+    }
 
     @Test
     @Order(1)
@@ -111,13 +130,13 @@ class PipelineEndToEndTest {
         actions.approve(approver, invoiceId, "Looks right");
         waitForStatus(invoiceId, InvoiceStatus.SCHEDULED);
         Payment payment = payments.activeForInvoice(invoiceId).orElseThrow();
-        assertThat(payment.getStatus()).isEqualTo("SCHEDULED");
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SCHEDULED);
 
         // Approver cannot release; a different Admin can. The mock bank then settles it.
         assertThatThrownBy(() -> actions.release(approver, payment.getId())).isInstanceOf(ForbiddenException.class);
         actions.release(financeManager, payment.getId());
         waitForStatus(invoiceId, InvoiceStatus.PAID);
-        assertThat(payments.get(payment.getId()).getStatus()).isEqualTo("SETTLED");
+        assertThat(payments.get(payment.getId()).getStatus()).isEqualTo(PaymentStatus.SETTLED);
 
         // Every step, including the refusals, is in a hash chain that still verifies.
         assertThat(audit.forInvoice(invoiceId)).extracting(e -> e.getAction())
@@ -127,9 +146,9 @@ class PipelineEndToEndTest {
         // The screens' endpoints run their queries and serialize the entities to JSON.
         String detail = json.writeValueAsString(invoiceController.detail("U001", invoiceId));
         assertThat(detail).contains("\"approvalSteps\"", "\"auditEvents\"", "\"pipeline\"", "\"totalCad\"");
-        assertThat(invoiceController.list("U013")).extracting(i -> i.getId()).contains(invoiceId);   // employee sees own
-        assertThat(invoiceController.list("U008")).extracting(i -> i.getId()).doesNotContain(invoiceId); // other dept does not
-        assertThat(paymentController.list("U003")).extracting(r -> r.payment().getId()).contains(payment.getId());
+        assertThat(invoiceController.list("U013")).extracting(i -> i.id()).contains(invoiceId);   // employee sees own
+        assertThat(invoiceController.list("U008")).extracting(i -> i.id()).doesNotContain(invoiceId); // other dept does not
+        assertThat(paymentController.list("U003")).extracting(r -> r.payment().id()).contains(payment.getId());
         assertThat(approvalController.myApprovals("U007")).isEmpty();   // nothing waiting any more
         assertThat(queueController.queues("U001")).hasSize(9);          // 8 exception queues + ignored mail
         assertThat(json.writeValueAsString(userController.lookups("U001"))).contains("\"legalName\"");
@@ -152,16 +171,16 @@ class PipelineEndToEndTest {
         assertThat(held.getHoldQueue()).isEqualTo("VENDOR_HOLD");
         assertThat(held.getResumeNode()).isEqualTo("VENDOR_MATCH");
         assertThat(queueController.queues("U001")).anySatisfy(q ->
-                assertThat(q.items()).extracting(i -> i.getId()).contains(invoiceId));
+                assertThat(q.items()).extracting(i -> i.id()).contains(invoiceId));
         assertThatThrownBy(() -> actions.resumeFromHold(employee, invoiceId, "please")).isInstanceOf(ForbiddenException.class);
 
         actions.resumeFromHold(admin, invoiceId, "Checked the vendor by phone");
         waitForStatus(invoiceId, InvoiceStatus.PENDING_APPROVAL);
 
         // The block stays visible on the invoice, marked as overridden with the reason.
-        Flag flag = flags.findByInvoiceIdOrderById(invoiceId).stream()
+        Flag flag = flags.findByInvoice_IdOrderById(invoiceId).stream()
                 .filter(f -> "DEMO_BLOCK".equals(f.getCode())).findFirst().orElseThrow();
-        assertThat(flag.getOverriddenBy()).isEqualTo("U004");
+        assertThat(flag.getOverriddenById()).isEqualTo("U004");
         assertThat(flag.getOverrideReason()).isEqualTo("Checked the vendor by phone");
     }
 
@@ -189,25 +208,83 @@ class PipelineEndToEndTest {
         assertThat(fxRates.usdToCadOn(LocalDate.of(2026, 1, 2))).hasValueSatisfying(rate ->
                 assertThat(rate).isEqualByComparingTo("1.3738"));
         assertThat(invoices.get("AP-00001").getTotalCad()).isEqualByComparingTo("2520.00");
-        assertThat(flags.findByInvoiceIdOrderById("AP-00026")).extracting(f -> f.getCode())
+        assertThat(flags.findByInvoice_IdOrderById("AP-00026")).extracting(f -> f.getCode())
                 .contains("HISTORICAL_REPEAT_NUMBER");
     }
 
     @Test
     @Order(5)
     void theRepeatGuardRefusesTheSameVendorAndInvoiceNumberTwice() {
-        invoices.saveAndFlush(draftInvoice("T-1"));
-        assertThatThrownBy(() -> invoices.saveAndFlush(draftInvoice("T-2")))
+        invoices.saveAndFlush(draftInvoice("T-1", vendors.getReferenceById("V001")));
+        assertThatThrownBy(() -> invoices.saveAndFlush(draftInvoice("T-2", vendors.getReferenceById("V001"))))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
-    private static Invoice draftInvoice(String id) {
+    private static Invoice draftInvoice(String id, Vendor vendor) {
         Invoice invoice = new Invoice();
         invoice.setId(id);
-        invoice.setVendorId("V001");
+        invoice.setVendor(vendor);
         invoice.setCanonicalInvoiceNumber("REPEAT1");
         invoice.setStatus(InvoiceStatus.RECEIVED);
         return invoice;
+    }
+
+    @Test
+    @Order(6)
+    void theSchemaHasRealForeignKeys(@Autowired javax.sql.DataSource dataSource) throws Exception {
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement();
+             var rows = statement.executeQuery("select count(*) from information_schema.table_constraints "
+                     + "where constraint_type = 'FOREIGN KEY' and table_schema = 'public'")) {
+            rows.next();
+            assertThat(rows.getInt(1)).isGreaterThanOrEqualTo(39);
+        }
+    }
+
+    @Test
+    @Order(6)
+    void theDatabaseRefusesARowThatPointsAtNothing() {
+        Invoice orphan = draftInvoice("T-ORPHAN", vendors.getReferenceById("NO-SUCH-VENDOR"));
+        orphan.setCanonicalInvoiceNumber("ORPHAN1");
+        assertThatThrownBy(() -> invoices.saveAndFlush(orphan)).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @Order(7)
+    void relationshipsCanBeWalkedAndUpdatedThroughTheEntities() {
+        transaction.executeWithoutResult(tx -> {
+            Invoice invoice = invoices.get("AP-00001");
+            assertThat(invoice.getVendor().getLegalName()).isNotBlank();
+            assertThat(invoice.getLines()).isNotEmpty();
+            assertThat(invoice.getLines().get(0).getInvoice()).isEqualTo(invoice);
+            assertThat(invoice.getApprovalSteps()).isNotEmpty();
+            assertThat(invoice.getPayments()).isNotEmpty();
+
+            // Updating a relationship is just setting the reference; the foreign key column follows.
+            invoice.setDepartment(departments.getReferenceById("D02"));
+        });
+        assertThat(invoices.get("AP-00001").getDepartmentId()).isEqualTo("D02");
+
+        // Lines belong to their invoice: deleting the invoice deletes them (and replacing lines drops the old ones).
+        transaction.executeWithoutResult(tx -> {
+            Invoice draft = draftInvoice("T-LINES", vendors.getReferenceById("V002"));
+            draft.addLine(line(1));
+            draft.addLine(line(2));
+            Invoice invoice = invoices.saveAndFlush(draft);   // assigned ids are merged: keep working on the returned, managed copy
+            assertThat(invoiceLines.findByInvoice_IdOrderByLineNo("T-LINES")).hasSize(2);
+            invoice.replaceLines(java.util.List.of(line(1)));
+            invoices.flush();
+            assertThat(invoiceLines.findByInvoice_IdOrderByLineNo("T-LINES")).hasSize(1);
+            invoices.delete(invoice);
+            invoices.flush();
+            assertThat(invoiceLines.findByInvoice_IdOrderByLineNo("T-LINES")).isEmpty();
+        });
+    }
+
+    private static InvoiceLine line(int no) {
+        InvoiceLine line = new InvoiceLine();
+        line.setLineNo(no);
+        line.setDescription("line " + no);
+        return line;
     }
 
     private void waitForStatus(String invoiceId, InvoiceStatus expected) {

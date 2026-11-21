@@ -7,7 +7,5 @@ import java.util.List;
 
 public interface InvoiceLineRepository extends JpaRepository<InvoiceLine, Long> {
 
-    List<InvoiceLine> findByInvoiceIdOrderByLineNo(String invoiceId);
-
-    void deleteByInvoiceId(String invoiceId);
+    List<InvoiceLine> findByInvoice_IdOrderByLineNo(String invoiceId);
 }

@@ -1,5 +1,6 @@
 package com.brim.easyinvoice.intake;
 
+import com.brim.easyinvoice.model.DocumentChannel;
 import com.brim.easyinvoice.audit.Actor;
 import com.brim.easyinvoice.audit.AuditService;
 import com.brim.easyinvoice.model.Invoice;
@@ -92,7 +93,7 @@ public class IntakeService {
         }
         String fileName = file.getOriginalFilename() == null ? "upload" : file.getOriginalFilename();
         String contentType = file.getContentType() != null ? file.getContentType() : guessContentType(fileName);
-        return intake("UPLOAD", null, fileName, contentType, bytes, null, null, null,
+        return intake(DocumentChannel.UPLOAD, null, fileName, contentType, bytes, null, null, null,
                 OffsetDateTime.now(), user);
     }
 
@@ -108,13 +109,13 @@ public class IntakeService {
                     .toOffsetDateTime();
             List<String> attachments = email.attachments() == null ? List.of() : email.attachments();
             if (attachments.isEmpty()) {
-                IntakeResult r = intake("EMAIL", email.email_id(), null, null, null, sender, email.subject(),
+                IntakeResult r = intake(DocumentChannel.EMAIL, email.email_id(), null, null, null, sender, email.subject(),
                         email.body(), receivedAt, null);
                 if (r.duplicate()) skipped++; else created++;
             }
             for (String attachment : attachments) {
                 byte[] bytes = readFile(dataDir.resolve("incoming_invoices").resolve(attachment));
-                IntakeResult r = intake("EMAIL", email.email_id(), attachment, guessContentType(attachment), bytes,
+                IntakeResult r = intake(DocumentChannel.EMAIL, email.email_id(), attachment, guessContentType(attachment), bytes,
                         sender, email.subject(), email.body(), receivedAt, null);
                 if (r.duplicate()) skipped++; else created++;
             }
@@ -124,7 +125,7 @@ public class IntakeService {
         return Map.of("emails", emails.size(), "created", created, "alreadyKnown", skipped);
     }
 
-    private IntakeResult intake(String channel, String emailId, String fileName, String contentType, byte[] bytes,
+    private IntakeResult intake(DocumentChannel channel, String emailId, String fileName, String contentType, byte[] bytes,
                                 String sender, String subject, String body, OffsetDateTime receivedAt,
                                 User uploader) {
         String sha = bytes == null ? null : sha256(bytes);
@@ -132,7 +133,7 @@ public class IntakeService {
 
         Optional<SourceDocument> known = documents.findByIdempotencyKey(idempotencyKey);
         if (known.isPresent()) {
-            String existingInvoice = invoices.findBySourceDocumentId(known.get().getId()).map(Invoice::getId).orElse(null);
+            String existingInvoice = invoices.findBySourceDocument_Id(known.get().getId()).map(Invoice::getId).orElse(null);
             return new IntakeResult(existingInvoice, true);
         }
 
@@ -149,15 +150,15 @@ public class IntakeService {
         document.setSubject(subject);
         document.setBody(body);
         document.setReceivedAt(receivedAt);
-        document.setUploadedBy(uploader == null ? null : uploader.getId());
+        document.setUploadedBy(uploader);
         documents.save(document);
 
         // The uploader is the requester; their department pays. Email has no requester (routing will ask).
         Invoice invoice = new Invoice();
         invoice.setId(String.format("EI-%05d", invoiceNumbers.save(new InvoiceNumber()).getId()));
-        invoice.setSourceDocumentId(document.getId());
-        invoice.setRequesterUserId(uploader == null ? null : uploader.getId());
-        invoice.setDepartmentId(uploader == null ? null : uploader.getDepartmentId());
+        invoice.setSourceDocument(document);
+        invoice.setRequester(uploader);
+        invoice.setDepartment(uploader == null ? null : uploader.getDepartment());
         invoice.setReceivedDate(LocalDate.now());
         invoice.setStatus(InvoiceStatus.RECEIVED);
         invoices.save(invoice);
@@ -165,9 +166,9 @@ public class IntakeService {
 
         Actor actor = uploader == null ? Actor.SYSTEM : Actor.of(uploader);
         audit.record(actor, invoiceId, null, "invoice.received", NodeName.INTAKE_GATEWAY.name(), null, "RECEIVED",
-                Map.of("channel", channel, "file", fileName == null ? "(none)" : fileName,
+                Map.of("channel", channel.name(), "file", fileName == null ? "(none)" : fileName,
                         "sha256", sha == null ? "" : sha));
-        runner.enqueue(invoiceId, NodeName.INTAKE_GATEWAY);
+        runner.enqueue(invoice, NodeName.INTAKE_GATEWAY);
         return new IntakeResult(invoiceId, false);
     }
 

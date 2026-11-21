@@ -1,5 +1,6 @@
 package com.brim.easyinvoice.repo;
 
+import com.brim.easyinvoice.model.VendorStatus;
 import com.brim.easyinvoice.model.Vendor;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -10,9 +11,9 @@ public interface VendorRepository extends JpaRepository<Vendor, String> {
 
     Optional<Vendor> findFirstByLegalNameIgnoreCase(String legalName);
 
-    List<Vendor> findByStatus(String status);
+    List<Vendor> findByStatus(VendorStatus status);
 
     default List<Vendor> findAllActive() {
-        return findByStatus("active");
+        return findByStatus(VendorStatus.ACTIVE);
     }
 }

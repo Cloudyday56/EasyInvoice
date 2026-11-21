@@ -1,25 +1,28 @@
 package com.brim.easyinvoice.model;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
 
 @Entity
 @Table(name = "contracts")
 @Getter
 @Setter
 @NoArgsConstructor
-public class Contract {
+public class Contract extends BaseEntity<String> {
 
     @Id
     private String id;
-    private String vendorId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "vendor_id")
+    private Vendor vendor;
+
     private String description;
     private String billingType;
     @Column(precision = 14, scale = 2)

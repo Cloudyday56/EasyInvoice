@@ -51,7 +51,7 @@ public class InvoiceStateMachine {
         payload.put("resumeNode", resumeAt.name());
         audit.record(actor, invoice.getId(), null, "invoice.held", node, from.name(),
                 InvoiceStatus.ON_HOLD.name(), payload);
-        notifications.notifyAdmins("exception_queue", invoice.getId(),
+        notifications.notifyAdmins("exception_queue", invoice,
                 invoice.getId() + " is in " + queue.label() + ": " + message);
     }
 
@@ -69,7 +69,7 @@ public class InvoiceStateMachine {
 
     public void reject(Invoice invoice, Actor actor, String reason) {
         moveTo(invoice, InvoiceStatus.REJECTED, actor, null, Map.of("reason", reason));
-        notifications.notify(invoice.getRequesterUserId(), "rejected", invoice.getId(),
+        notifications.notify(invoice.getRequester(), "rejected", invoice,
                 invoice.getId() + " was rejected: " + reason);
     }
 

@@ -1,5 +1,6 @@
 package com.brim.easyinvoice.pipeline.nodes;
 
+import com.brim.easyinvoice.model.DocumentChannel;
 import com.brim.easyinvoice.model.Invoice;
 import com.brim.easyinvoice.model.SourceDocument;
 import com.brim.easyinvoice.pipeline.HoldQueue;
@@ -29,7 +30,7 @@ public class EmailClassifierNode implements Node {
     @Override
     public StageResult run(Invoice invoice, NodeContext ctx) {
         SourceDocument doc = ctx.document();
-        if ("UPLOAD".equals(doc.getChannel())) {
+        if (doc.getChannel() == DocumentChannel.UPLOAD) {
             return StageResult.pass("Uploaded from the UI: classification skipped");
         }
         if (!doc.hasFile()) {

@@ -1,5 +1,8 @@
 package com.brim.easyinvoice.web;
 
+import com.brim.easyinvoice.model.PaymentStatus;
+import com.brim.easyinvoice.web.dto.PaymentDto;
+import org.springframework.transaction.annotation.Transactional;
 import com.brim.easyinvoice.model.ApprovalStep;
 import com.brim.easyinvoice.model.Invoice;
 import com.brim.easyinvoice.model.Payment;
@@ -28,7 +31,7 @@ import java.util.stream.Collectors;
 public class PaymentController {
 
     /** A payment row plus whether THIS user may release it (and if not, why). */
-    public record PaymentRow(Payment payment, String invoiceStatus, boolean canRelease, String releaseBlockedReason) {
+    public record PaymentRow(PaymentDto payment, String invoiceStatus, boolean canRelease, String releaseBlockedReason) {
     }
 
     private final CurrentUser currentUser;
@@ -50,6 +53,7 @@ public class PaymentController {
     }
 
     @GetMapping
+    @Transactional(readOnly = true)
     public List<PaymentRow> list(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId) {
         User user = currentUser.require(userId);
         authorization.authorize(user, Action.VIEW_ADMIN_SCREENS, null);
@@ -60,12 +64,12 @@ public class PaymentController {
 
         return payments.findAllNewestFirst().stream().map(p -> {
             Invoice invoice = invoicesById.get(p.getInvoiceId());
-            boolean releasable = "SCHEDULED".equals(p.getStatus());
+            boolean releasable = p.getStatus() == PaymentStatus.SCHEDULED;
             Decision d = releasable
                     ? AuthorizationService.decide(user, Action.RELEASE_PAYMENT, invoice,
                     stepsByInvoice.getOrDefault(p.getInvoiceId(), List.of()))
                     : Decision.deny("Payment is " + p.getStatus());
-            return new PaymentRow(p, invoice.getStatus().name(), d.allowed(), d.reason());
+            return new PaymentRow(PaymentDto.from(p), invoice.getStatus().name(), d.allowed(), d.reason());
         }).toList();
     }
 

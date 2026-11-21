@@ -1,5 +1,6 @@
 package com.brim.easyinvoice.pipeline.nodes;
 
+import org.springframework.transaction.annotation.Transactional;
 import com.brim.easyinvoice.model.ApprovalStep;
 import com.brim.easyinvoice.model.Department;
 import com.brim.easyinvoice.model.Invoice;
@@ -32,12 +33,10 @@ public class ApprovalRoutingNode implements Node {
     /** Stop following manager chains after this many hops (guards against loops in the data). */
     private static final int MAX_ESCALATIONS = 5;
 
-    private final UserRepository users;
     private final DepartmentRepository departments;
     private final ApprovalStepRepository steps;
 
-    public ApprovalRoutingNode(UserRepository users, DepartmentRepository departments, ApprovalStepRepository steps) {
-        this.users = users;
+    public ApprovalRoutingNode(DepartmentRepository departments, ApprovalStepRepository steps) {
         this.departments = departments;
         this.steps = steps;
     }
@@ -48,10 +47,12 @@ public class ApprovalRoutingNode implements Node {
     }
 
     /** Who will approve, on whose behalf, and why. */
-    record Assignment(User approver, String actingFor, String reason) {
+    record Assignment(User approver, User actingFor, String reason) {
     }
 
+    /** Transactional so the user, manager and delegate links can be followed (the nodes run outside a transaction). */
     @Override
+    @Transactional
     public StageResult run(Invoice invoice, NodeContext ctx) {
         List<ApprovalStep> live = steps.forInvoice(invoice.getId()).stream()
                 .filter(s -> s.isPending() || s.isApproved()).toList();
@@ -62,13 +63,13 @@ public class ApprovalRoutingNode implements Node {
             return StageResult.block(HoldQueue.ROUTING_ERROR, "NO_DEPARTMENT",
                     "No department: the requester is unknown (e.g. invoice came by email)");
         }
-        Optional<String> managerId = departments.findById(invoice.getDepartmentId()).map(Department::getManagerUserId);
-        if (managerId.isEmpty()) {
+        Optional<User> manager = departments.findById(invoice.getDepartmentId()).map(Department::getManager);
+        if (manager.isEmpty()) {
             return StageResult.block(HoldQueue.ROUTING_ERROR, "NO_APPROVER",
                     "Department " + invoice.getDepartmentId() + " has no manager");
         }
 
-        Optional<Assignment> assignment = resolve(users.get(managerId.get()), invoice.getRequesterUserId());
+        Optional<Assignment> assignment = resolve(manager.get(), invoice.getRequesterId());
         if (assignment.isEmpty()) {
             return StageResult.block(HoldQueue.ROUTING_ERROR, "NO_ELIGIBLE_APPROVER",
                     "Could not find an eligible approver for department " + invoice.getDepartmentId());
@@ -76,11 +77,11 @@ public class ApprovalRoutingNode implements Node {
 
         Assignment a = assignment.get();
         ApprovalStep step = new ApprovalStep();
-        step.setInvoiceId(invoice.getId());
+        step.setInvoice(invoice);
         step.setStepNo(1);
-        step.setRequiredRole(a.approver().getRole().name());
+        step.setRequiredRole(a.approver().getRole());
         step.setReason(a.reason());
-        step.setAssignedUserId(a.approver().getId());
+        step.setAssignedUser(a.approver());
         step.setActingFor(a.actingFor());
         steps.save(step);
         return StageResult.pass("Step 1: " + a.approver().getFullName() + " (" + a.reason() + ")");
@@ -96,13 +97,13 @@ public class ApprovalRoutingNode implements Node {
             } else if (candidate.getId().equals(requesterId)) {
                 reason = "Requester is the department manager; escalated to their manager (no self-approval)";
                 candidate = managerOf(candidate);
-            } else if (candidate.isOnLeave() && candidate.getDelegateUserId() != null) {
-                User delegate = users.get(candidate.getDelegateUserId());
+            } else if (candidate.isOnLeave() && candidate.getDelegate() != null) {
+                User delegate = candidate.getDelegate();
                 if (delegate.getId().equals(requesterId) || !delegate.isActive()) {
                     candidate = managerOf(candidate);
                     continue;
                 }
-                return Optional.of(new Assignment(delegate, candidate.getId(),
+                return Optional.of(new Assignment(delegate, candidate,
                         candidate.getFullName() + " is on leave; delegate assigned"));
             } else {
                 return Optional.of(new Assignment(candidate, null, reason));
@@ -112,6 +113,6 @@ public class ApprovalRoutingNode implements Node {
     }
 
     private User managerOf(User user) {
-        return user.getManagerId() == null ? null : users.findById(user.getManagerId()).orElse(null);
+        return user.getManager();
     }
 }

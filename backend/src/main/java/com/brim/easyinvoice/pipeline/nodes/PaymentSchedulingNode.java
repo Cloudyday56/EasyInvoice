@@ -1,5 +1,7 @@
 package com.brim.easyinvoice.pipeline.nodes;
 
+import com.brim.easyinvoice.model.PaymentStatus;
+import com.brim.easyinvoice.model.PaymentMethod;
 import com.brim.easyinvoice.model.Invoice;
 import com.brim.easyinvoice.model.Payment;
 import com.brim.easyinvoice.model.PaymentNumber;
@@ -57,21 +59,21 @@ public class PaymentSchedulingNode implements Node {
                     "Vendor is no longer active; payment not scheduled");
         }
 
-        String method = vendor.isAcceptsCardPayment() ? "CARD" : "EFT";
+        PaymentMethod method = vendor.isAcceptsCardPayment() ? PaymentMethod.CARD : PaymentMethod.EFT;
         int terms = vendor.getPaymentTermsDays() == null ? 30 : vendor.getPaymentTermsDays();
         LocalDate payDate = invoice.getDueDate() != null ? invoice.getDueDate() : LocalDate.now().plusDays(terms);
 
         Payment payment = new Payment();
         payment.setId(String.format("EP-%05d", paymentNumbers.save(new PaymentNumber()).getId()));
         payment.setIdempotencyKey(payment.getId());
-        payment.setInvoiceId(invoice.getId());
-        payment.setVendorId(vendor.getId());
+        payment.setInvoice(invoice);
+        payment.setVendor(vendor);
         payment.setMethod(method);
         payment.setScheduledDate(payDate);
         payment.setCurrency(invoice.getCurrency());
         payment.setAmount(invoice.getTotal());
         payment.setAmountCad(invoice.getTotalCad());
-        payment.setStatus("SCHEDULED");
+        payment.setStatus(PaymentStatus.SCHEDULED);
         payment.setPreparedBy("system");
         payments.save(payment);
         return StageResult.pass("Scheduled " + method + " payment " + payment.getId() + " for " + payDate);

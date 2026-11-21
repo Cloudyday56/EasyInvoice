@@ -1,5 +1,8 @@
 package com.brim.easyinvoice.web;
 
+import com.brim.easyinvoice.web.dto.InvoiceDto;
+import com.brim.easyinvoice.web.dto.ApprovalStepDto;
+import org.springframework.transaction.annotation.Transactional;
 import com.brim.easyinvoice.model.ApprovalStep;
 import com.brim.easyinvoice.model.Invoice;
 import com.brim.easyinvoice.model.InvoiceStatus;
@@ -20,7 +23,7 @@ import java.util.List;
 @RestController
 public class ApprovalController {
 
-    public record ApprovalItem(ApprovalStep step, Invoice invoice, boolean canApprove, String blockedReason) {
+    public record ApprovalItem(ApprovalStepDto step, InvoiceDto invoice, boolean canApprove, String blockedReason) {
     }
 
     private final CurrentUser currentUser;
@@ -34,6 +37,7 @@ public class ApprovalController {
     }
 
     @GetMapping("/api/approvals")
+    @Transactional(readOnly = true)
     public List<ApprovalItem> myApprovals(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId) {
         User user = currentUser.require(userId);
         List<ApprovalItem> items = new ArrayList<>();
@@ -44,7 +48,7 @@ public class ApprovalController {
             boolean isCurrent = AuthorizationService.currentStep(all).map(s -> s.getId().equals(step.getId())).orElse(false);
             if (!isCurrent) continue; // an earlier step still has to be decided first
             Decision decision = AuthorizationService.decide(user, Action.APPROVE_INVOICE, invoice, all);
-            items.add(new ApprovalItem(step, invoice, decision.allowed(), decision.reason()));
+            items.add(new ApprovalItem(ApprovalStepDto.from(step), InvoiceDto.from(invoice), decision.allowed(), decision.reason()));
         }
         return items;
     }

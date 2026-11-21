@@ -1,6 +1,10 @@
 package com.brim.easyinvoice.security;
 
+import com.brim.easyinvoice.model.ApprovalStatus;
 import com.brim.easyinvoice.model.ApprovalStep;
+import com.brim.easyinvoice.model.Department;
+import com.brim.easyinvoice.model.UserStatus;
+import com.brim.easyinvoice.model.Vendor;
 import com.brim.easyinvoice.model.Invoice;
 import com.brim.easyinvoice.model.InvoiceStatus;
 import com.brim.easyinvoice.model.Role;
@@ -194,10 +198,10 @@ class AuthorizationServiceTest {
         user.setId(id);
         user.setFullName(id);
         user.setRole(role);
-        user.setDepartmentId(dept);
+        user.setDepartment(department(dept));
         user.setApprovalLimitCad(BigDecimal.valueOf(approvalLimit));
         user.setReleaseLimitCad(BigDecimal.valueOf(releaseLimit));
-        user.setStatus(status);
+        user.setStatus(UserStatus.valueOf(status.toUpperCase()));
         return user;
     }
 
@@ -211,26 +215,48 @@ class AuthorizationServiceTest {
     private static Invoice invoice(InvoiceStatus status, String requesterId, String dept, double totalCad) {
         Invoice invoice = new Invoice();
         invoice.setId("INV-1");
-        invoice.setVendorId("V001");
+        invoice.setVendor(vendor("V001"));
         invoice.setCurrency("CAD");
         invoice.setTotal(BigDecimal.valueOf(totalCad));
         invoice.setTotalCad(BigDecimal.valueOf(totalCad));
-        invoice.setDepartmentId(dept);
-        invoice.setRequesterUserId(requesterId);
+        invoice.setDepartment(department(dept));
+        invoice.setRequester(userRef(requesterId));
         invoice.setStatus(status);
         return invoice;
     }
 
     private static ApprovalStep step(int no, String assignee, String actingFor, String status, String actedBy) {
         ApprovalStep step = new ApprovalStep();
-        step.setInvoiceId("INV-1");
+        Invoice invoice = new Invoice();
+        invoice.setId("INV-1");
+        step.setInvoice(invoice);
         step.setStepNo(no);
-        step.setRequiredRole("APPROVER");
-        step.setAssignedUserId(assignee);
-        step.setActingFor(actingFor);
-        step.setStatus(status);
-        step.setActedBy(actedBy);
+        step.setRequiredRole(Role.APPROVER);
+        step.setAssignedUser(userRef(assignee));
+        step.setActingFor(userRef(actingFor));
+        step.setStatus(ApprovalStatus.valueOf(status));
+        step.setActedBy(userRef(actedBy));
         return step;
+    }
+
+    private static Department department(String id) {
+        if (id == null) return null;
+        Department department = new Department();
+        department.setId(id);
+        return department;
+    }
+
+    private static User userRef(String id) {
+        if (id == null) return null;
+        User user = new User();
+        user.setId(id);
+        return user;
+    }
+
+    private static Vendor vendor(String id) {
+        Vendor vendor = new Vendor();
+        vendor.setId(id);
+        return vendor;
     }
 
     private static List<ApprovalStep> pendingStepFor(String assignee) {
