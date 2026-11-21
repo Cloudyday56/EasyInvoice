@@ -15,6 +15,7 @@ import com.brim.easyinvoice.security.Action;
 import com.brim.easyinvoice.security.AuthorizationService;
 import com.brim.easyinvoice.security.Decision;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -73,9 +74,13 @@ public class PaymentController {
         }).toList();
     }
 
+    /** An optional note is recorded with the release, so the audit trail explains the decision. */
+    public record ReleaseRequest(String reason) {}
+
     @PostMapping("/{id}/release")
     public void release(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId,
-                        @PathVariable String id) {
-        actions.release(currentUser.require(userId), id);
+                        @PathVariable String id,
+                        @RequestBody(required = false) ReleaseRequest body) {
+        actions.release(currentUser.require(userId), id, body == null ? null : body.reason());
     }
 }

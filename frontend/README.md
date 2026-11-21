@@ -38,8 +38,16 @@ docker compose up --build
 ```
 
 Open <http://localhost:5173>. `nginx.conf` serves the static build and proxies `/api` to the `backend`
-compose service. To run only the frontend container against a backend on your host, change `proxy_pass`
-to `http://host.docker.internal:8080/api/`.
+compose service.
+
+To run only the frontend container against a backend already running on your host at
+<http://localhost:8080>:
+
+```bash
+docker compose -f frontend/docker-compose.yml up --build
+```
+
+That file mounts `nginx.host.conf`, which proxies `/api` to `host.docker.internal:8080`.
 
 ## Structure
 
@@ -49,13 +57,14 @@ src/
   components/
     Sidebar.tsx              three queues + payment rail
     InboxList.tsx            searchable invoice list with compact cards
-    PreviewPanel.tsx         AI summary, facts, document/email tabs, action bar
+    PreviewPanel.tsx         risk overview, facts, document/email tabs, action bar
     InvoiceDocument.tsx      paper-style invoice preview with payment details
+    AuditTrailDrawer.tsx     human-readable activity timeline + integrity banner
     UploadModal.tsx          drag-and-drop invoice intake
+    ReasonModal.tsx          written reason for approve / reject / return / resolve / release
     ui.tsx                   avatars, tags, status/flag/risk pills
   api/client.ts              typed fetch client for /api (sends X-User-Id)
-  api/adapt.ts               maps backend DTOs onto the UI's Invoice view model
-  components/ReasonModal.tsx written reason for approve / reject / return / resume
+  api/adapt.ts               maps backend DTOs onto the UI's Invoice view model, audit labels
   types.ts                   invoice and filter types
   lib/filters.ts             queue labels
 Dockerfile                   multi-stage build (Node build → nginx serve)
@@ -67,20 +76,28 @@ nginx.conf                   SPA fallback + /api proxy to the backend service
 - **Three queues only:** `Needs action`, `Fraud & holds`, and `Paid`. There are no dead `VIEWS`
   links, and the sidebar shows the active Brim corporate card (`•• 4821`).
 - **Payment method beside the facts:** the summary grid puts the card/EFT rail next to amount,
-  tax, due date and PO number. Locked bank details are called out explicitly.
+  tax, due date and PO number. Bank details waiting on review are called out explicitly.
 - **One clear primary action:** the bottom action bar uses a full sentence, for example
-  `Approve & Pay with Card ($12,500.00)` or `Hold & Verify Vendor`. There is no icon-only rail.
-  Secondary `Assign`, `Reply`, and `Hold` buttons sit beside it.
-- **Document first:** the AI Fraud Summary stays at the top, the invoice PDF preview renders
+  `Approve ($12,500.00)`, `Release payment ($12,500.00)` or `Mark issue resolved`. Secondary
+  `Reply` and `Audit trail` buttons sit beside it.
+- **Document first:** the risk overview stays at the top, the invoice PDF preview renders
   directly underneath, and the raw email is one tab away under `Original email`.
+- **Activity without jargon:** open **Activity & audit trail** from the preview header or footer
+  to see a simple timeline: what happened, who did it, why, and which step it affected. Hashes,
+  event codes and JSON live under **Technical details**, so they never get in the way.
 
 ## Notes
 
 - All data comes from the Spring Boot API. The list polls every 2.5 s and the selected invoice every
-  1.2 s while it is still moving, so the 10-node tracker fills in live.
+  1.2 s while it is still moving, so the step tracker fills in live.
 - The user switcher (bottom of the sidebar) is the demo login: it sets the `X-User-Id` header.
   Buttons follow the backend's `allowedActions`, so role, limit and separation-of-duty rules come
   from the server; refused actions show the server's reason in a red toast.
-- Admins get an **Audit & tools** section: poll inbox, verify chain, export log, test LLM, reset demo.
+- Releasing a payment asks for an optional note. Approve, reject, return and resolve require a
+  reason; all of them appear in the activity trail.
+- Admins get **Records & tools**: poll inbox, review audit activity, check audit integrity, download
+  the audit log, test the document reader, clear invoices and reset demo data.
+- The audit drawer shows an integrity banner when opened from **Check audit integrity**. CSV
+  download is scoped to the open invoice from the drawer, or to all records from the sidebar.
 - Responsive behaviour: inbox + preview from 1024px, a single-pane inbox with a slide-over menu
   and a back button on phones.

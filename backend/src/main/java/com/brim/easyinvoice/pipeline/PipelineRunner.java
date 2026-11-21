@@ -165,6 +165,7 @@ public class PipelineRunner {
         if (result.reasonCode() != null) payload.put("reasonCode", result.reasonCode());
         if (result.patch().containsKey("riskScore")) payload.put("riskScore", result.patch().get("riskScore"));
         if (!result.flags().isEmpty()) payload.put("flags", result.flags().stream().map(FlagDraft::code).toList());
+        if (result.auditDetails() != null && !result.auditDetails().isEmpty()) payload.putAll(result.auditDetails());
 
         switch (result.outcome()) {
             case PASS, FLAG -> {

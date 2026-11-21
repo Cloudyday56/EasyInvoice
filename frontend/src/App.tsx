@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 import type { FilterId, Invoice } from './types'
 import { api, ApiError, getStoredUserId, setCurrentUserId } from './api/client'
-import type { InvoiceDetail, InvoiceDto, Lookups, UserDto } from './api/client'
+import type { AuditEventDto, InvoiceDetail, InvoiceDto, Lookups, UserDto, VerifyResult } from './api/client'
 import { isOnHold, isTerminal, toInvoice } from './api/adapt'
 import { formatMoney } from './lib/format'
 import { cn } from './lib/cn'
@@ -12,6 +12,7 @@ import { PreviewPanel } from './components/PreviewPanel'
 import type { PanelAction } from './components/PreviewPanel'
 import { UploadModal } from './components/UploadModal'
 import { ReasonModal } from './components/ReasonModal'
+import { AuditTrailDrawer } from './components/AuditTrailDrawer'
 
 type MobileView = 'inbox' | 'preview'
 type ToastTone = 'success' | 'error'
@@ -57,6 +58,10 @@ export default function App() {
   const [reasonRequest, setReasonRequest] = useState<ReasonRequest | null>(null)
   const [toast, setToast] = useState<{ message: string; tone: ToastTone } | null>(null)
   const [toastBottom, setToastBottom] = useState(20)
+  const [auditView, setAuditView] = useState<{ invoiceId?: string; title: string; subtitle: string } | null>(null)
+  const [auditEvents, setAuditEvents] = useState<AuditEventDto[]>([])
+  const [auditVerification, setAuditVerification] = useState<VerifyResult | null>(null)
+  const [auditLoading, setAuditLoading] = useState(false)
   const toastTimer = useRef<number | undefined>(undefined)
 
   const currentUser = users.find((u) => u.id === userId) ?? null
@@ -71,6 +76,13 @@ export default function App() {
     return () => {
       if (toastTimer.current) window.clearTimeout(toastTimer.current)
     }
+  }, [])
+
+  const closeAudit = useCallback(() => {
+    setAuditView(null)
+    setAuditEvents([])
+    setAuditVerification(null)
+    setAuditLoading(false)
   }, [])
 
   // ---- Data loading -------------------------------------------------------
@@ -140,9 +152,10 @@ export default function App() {
     setRows([])
     setDetails({})
     setSelectedId(null)
+    closeAudit()
     api.lookups().then(setLookups).catch(() => undefined)
     refreshList()
-  }, [userId, refreshList])
+  }, [userId, refreshList, closeAudit])
 
   // Live list.
   useEffect(() => {
@@ -193,13 +206,14 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
-      if (reasonRequest) setReasonRequest(null)
+      if (auditView) closeAudit()
+      else if (reasonRequest) setReasonRequest(null)
       else if (uploadOpen) setUploadOpen(false)
       if (mobileSidebarOpen) setMobileSidebarOpen(false)
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [uploadOpen, mobileSidebarOpen, reasonRequest])
+  }, [auditView, closeAudit, uploadOpen, mobileSidebarOpen, reasonRequest])
 
   // ---- View model -----------------------------------------------------------
 
@@ -276,18 +290,6 @@ export default function App() {
     },
     [notify, refreshDetail, refreshList],
   )
-
-  /** Label for invoices that are finished (or nearly), known from the list row alone. */
-  const closedLabel = (status: string): string | null =>
-    status === 'PAID'
-      ? 'Paid · Export audit trail'
-      : status === 'REJECTED'
-        ? 'Rejected'
-        : status === 'IGNORED'
-          ? 'Ignored · not an invoice'
-          : status === 'RELEASED'
-            ? 'Released · awaiting settlement'
-            : null
 
   const askReason = (request: ReasonRequest) => setReasonRequest(request)
 
@@ -371,18 +373,18 @@ export default function App() {
       })
       return {
         primary: {
-          label: invoice.raw.resumeNode ? `Resume at ${invoice.raw.resumeNode.replace(/_/g, ' ').toLowerCase()}` : 'Resume from hold',
+          label: 'Mark issue resolved',
           tone: 'danger',
           kind: 'resolve',
           disabled: busy,
           onClick: () =>
             askReason({
-              title: 'Resume from hold',
-              description: `${invoice.raw.holdReason ?? 'This invoice is parked in an exception queue.'} Explain why it is safe to continue; the override is kept on the flag.`,
-              confirmLabel: 'Resume pipeline',
+              title: 'Resolve this hold',
+              description: `${invoice.raw.holdReason ?? 'This invoice is waiting for review.'} Explain why it is safe to continue; the reason is saved in the activity trail.`,
+              confirmLabel: 'Continue invoice',
               tone: 'danger',
               run: async (reason) => {
-                await run(() => api.resume(id, reason), 'Resumed · invoice re-entered the pipeline', id)
+                await run(() => api.resume(id, reason), 'Issue resolved · invoice is moving again', id)
               },
             }),
         },
@@ -400,7 +402,16 @@ export default function App() {
           disabled: busy || !paymentId,
           onClick: () =>
             paymentId &&
-            run(() => api.releasePayment(paymentId), `${invoice.supplier} payment released · sent to bank`, id),
+            askReason({
+              title: 'Release payment',
+              description: `Send ${amount} to ${invoice.supplier}. Add an optional note for the payment record.`,
+              confirmLabel: 'Release payment',
+              tone: 'dark',
+              optional: true,
+              run: async (reason) => {
+                await run(() => api.releasePayment(paymentId, reason || undefined), `Payment released to ${invoice.supplier}`, id)
+              },
+            }),
         },
         secondary,
       }
@@ -409,31 +420,81 @@ export default function App() {
     // Nothing this user can do: explain why, using the backend's own state.
     const waitingOn = users.find((u) => u.id === invoice.raw.waitingOnUserId)?.fullName
     const label =
-      closedLabel(status) ??
-      (status === 'SCHEDULED'
-        ? 'Scheduled · an Admin who did not approve must release'
-        : status === 'PENDING_APPROVAL'
-          ? `Waiting on ${waitingOn ?? 'approver'}`
-          : isOnHold(status)
-            ? 'On hold · an Admin must resolve'
-            : `Processing · ${invoice.pipeline.node} ${invoice.pipeline.label}`)
+      status === 'PAID'
+        ? 'Paid'
+        : status === 'REJECTED'
+          ? 'Rejected'
+          : status === 'IGNORED'
+            ? 'Ignored · not an invoice'
+            : status === 'RELEASED'
+              ? 'Released · awaiting settlement'
+              : status === 'SCHEDULED'
+                ? 'Scheduled · another finance user must release'
+                : status === 'PENDING_APPROVAL'
+                  ? `Waiting on ${waitingOn ?? 'approver'}`
+                  : isOnHold(status)
+                    ? 'On hold · needs review'
+                    : `Processing · ${invoice.pipeline.label}`
     return {
       primary: {
         label,
         tone: status === 'PAID' ? 'success' : 'dark',
         kind: status === 'PAID' ? 'paid' : 'info',
         disabled: status !== 'PAID',
-        onClick: status === 'PAID' ? () => handleAudit() : undefined,
       },
       secondary,
     }
   }
 
-  const handleAudit = () => {
+  const openInvoiceAudit = () => {
     if (!selectedInvoice) return
+    setAuditView({
+      invoiceId: selectedInvoice.id,
+      title: 'Activity & audit trail',
+      subtitle: `${selectedInvoice.id} · what happened, when, and who did it`,
+    })
+    setAuditEvents([])
+    setAuditVerification(null)
+    setAuditLoading(false)
+    setMobileSidebarOpen(false)
+  }
+
+  const openGlobalAudit = useCallback(
+    async (verify = false) => {
+      setAuditView({ title: 'All activity', subtitle: 'Every recorded change across all invoices.' })
+      setAuditEvents([])
+      setAuditVerification(null)
+      setAuditLoading(true)
+      setMobileSidebarOpen(false)
+      try {
+        const [events, verification] = await Promise.all([
+          api.auditLog(1000),
+          verify ? api.verifyAudit() : Promise.resolve(null),
+        ])
+        setAuditEvents([...events].sort((a, b) => a.id - b.id))
+        setAuditVerification(verification)
+        if (verification) {
+          notify(
+            verification.valid
+              ? `Integrity check passed · ${verification.checked} events intact`
+              : `Integrity issue at event #${verification.brokenAtId}: ${verification.problem ?? 'hash mismatch'}`,
+            verification.valid ? 'success' : 'error',
+          )
+        }
+      } catch (error) {
+        notify(errorMessage(error), 'error')
+      } finally {
+        setAuditLoading(false)
+      }
+    },
+    [notify],
+  )
+
+  const downloadAudit = () => {
+    if (!auditView) return
     api
-      .exportAudit(selectedInvoice.id)
-      .then(() => notify(`Audit trail exported · ${selectedInvoice.detail?.auditEvents.length ?? 0} events`))
+      .exportAudit(auditView.invoiceId)
+      .then(() => notify('Audit log downloaded'))
       .catch((error) => notify(errorMessage(error), 'error'))
   }
 
@@ -451,7 +512,7 @@ export default function App() {
       notify(
         result.duplicate
           ? `${file.name} was already received · opened the existing invoice`
-          : `${file.name} queued for intake · watch the pipeline fill in`,
+          : `${file.name} received · you can follow its progress here`,
       )
       setQuery('')
       setActiveFilter('action')
@@ -468,38 +529,29 @@ export default function App() {
   const adminTools = {
     pollInbox: () =>
       run(api.pollInbox, (result) =>
-        `Inbox polled · ${Object.entries(result ?? {})
+        `Inbox checked · ${Object.entries(result ?? {})
           .map(([k, v]) => `${v} ${k}`)
           .join(' · ')}`,
       ),
-    verifyChain: async () => {
-      try {
-        const result = await api.verifyAudit()
-        notify(
-          result.valid
-            ? `Audit chain verified · ${result.checked} events intact`
-            : `Chain broken at event #${result.brokenAtId}: ${result.problem ?? 'hash mismatch'}`,
-          result.valid ? 'success' : 'error',
-        )
-      } catch (error) {
-        notify(errorMessage(error), 'error')
-      }
-    },
+    viewAuditLog: () => openGlobalAudit(),
+    verifyChain: () => openGlobalAudit(true),
     exportLog: () => api.exportAudit().catch((error) => notify(errorMessage(error), 'error')),
     clearInvoices: () => {
-      if (!window.confirm('Remove ALL invoices, payments and audit events? Users and vendors are kept.')) return
+      if (!window.confirm('Remove all invoices, payments and activity records? Users and vendors are kept.')) return
       run(async () => {
         await api.clearInvoices()
         setDetails({})
         setSelectedId(null)
+        closeAudit()
       }, 'All invoices removed')
     },
     resetDemo: () => {
-      if (!window.confirm('Wipe all invoices, payments and audit events and reload the sample data?')) return
+      if (!window.confirm('Clear all invoices and activity records, then reload the sample data?')) return
       run(async () => {
         await api.resetDemo()
         setDetails({})
         setSelectedId(null)
+        closeAudit()
       }, 'Demo reset · sample data reloaded')
     },
     testLlm: async () => {
@@ -523,6 +575,12 @@ export default function App() {
   }
 
   const panelActions = actionsFor(selectedInvoice)
+
+  const auditEventsForDrawer = useMemo(() => {
+    if (!auditView) return []
+    const source = auditView.invoiceId ? (details[auditView.invoiceId]?.auditEvents ?? []) : auditEvents
+    return [...source].sort((a, b) => a.id - b.id)
+  }, [auditView, details, auditEvents])
 
   return (
     <div className="h-full w-full overflow-hidden bg-[radial-gradient(130%_130%_at_0%_0%,#e6f4fd_0%,#edf2f8_48%,#e9eef6_100%)] p-0 lg:p-3 xl:p-4">
@@ -594,7 +652,7 @@ export default function App() {
                 notify(`Reply drafted to ${selectedInvoice.supplier} · ${message.length} characters`)
               }
               onDownload={handleDownload}
-              onAudit={handleAudit}
+              onAudit={openInvoiceAudit}
             />
           </div>
         </main>
@@ -611,6 +669,18 @@ export default function App() {
           await reasonRequest.run(reason)
           setReasonRequest(null)
         }}
+      />
+
+      <AuditTrailDrawer
+        open={Boolean(auditView)}
+        events={auditEventsForDrawer}
+        users={users}
+        title={auditView?.title}
+        subtitle={auditView?.subtitle}
+        verification={auditVerification}
+        loading={auditLoading || Boolean(auditView?.invoiceId && !details[auditView.invoiceId])}
+        onClose={closeAudit}
+        onExport={downloadAudit}
       />
 
       {toast && (

@@ -141,6 +141,7 @@ export interface AuditEventDto {
   toStatus: string | null
   payloadJson: string | null
   createdAt: string
+  prevHash: string
   hash: string
 }
 
@@ -310,8 +311,10 @@ export const api = {
     post(`/invoices/${encodeURIComponent(id)}/reject-hold`, { reason }),
   openDocument: (id: string) => openBlob(`/invoices/${encodeURIComponent(id)}/document`),
 
-  releasePayment: (paymentId: string) => post(`/payments/${encodeURIComponent(paymentId)}/release`),
+  releasePayment: (paymentId: string, reason?: string) =>
+    post(`/payments/${encodeURIComponent(paymentId)}/release`, reason ? { reason } : undefined),
 
+  auditLog: (limit = 200) => json<AuditEventDto[]>(`/audit?limit=${limit}`),
   exportAudit: (invoiceId?: string) =>
     downloadBlob(
       invoiceId ? `/audit/export.csv?invoiceId=${encodeURIComponent(invoiceId)}` : '/audit/export.csv',

@@ -3,6 +3,7 @@ import {
   ChevronsUpDown,
   CreditCard,
   Download,
+  History,
   Inbox,
   Link2,
   MailPlus,
@@ -25,6 +26,7 @@ import { roleLabel, toPerson } from '../api/adapt'
 
 export interface AdminTools {
   pollInbox: () => void
+  viewAuditLog: () => void
   verifyChain: () => void
   exportLog: () => void
   resetDemo: () => void
@@ -282,16 +284,17 @@ export function Sidebar({
           {adminTools && !compact && (
             <>
               <p className="mt-6 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                Audit & tools
+                Records & tools
               </p>
               <div className="mt-2 space-y-0.5">
                 {[
                   { label: 'Poll AP inbox', icon: MailPlus, onClick: adminTools.pollInbox },
-                  { label: 'Verify audit chain', icon: Link2, onClick: adminTools.verifyChain },
-                  { label: 'Export audit log', icon: Download, onClick: adminTools.exportLog },
-                  { label: 'Test LLM connection', icon: Sparkles, onClick: adminTools.testLlm },
-                  { label: 'Remove all invoices', icon: Trash2, onClick: adminTools.clearInvoices },
-                  { label: 'Reset demo', icon: RotateCcw, onClick: adminTools.resetDemo },
+                  { label: 'Review audit activity', icon: History, onClick: adminTools.viewAuditLog },
+                  { label: 'Check audit integrity', icon: Link2, onClick: adminTools.verifyChain },
+                  { label: 'Download audit log', icon: Download, onClick: adminTools.exportLog },
+                  { label: 'Test document reader', icon: Sparkles, onClick: adminTools.testLlm },
+                  { label: 'Clear invoices', icon: Trash2, onClick: adminTools.clearInvoices },
+                  { label: 'Reset demo data', icon: RotateCcw, onClick: adminTools.resetDemo },
                 ].map(({ label, icon: Icon, onClick }) => (
                   <button
                     key={label}
@@ -343,10 +346,10 @@ export function Sidebar({
               <div className="rounded-2xl border border-rose-100 bg-rose-50/70 p-3">
                 <div className="flex items-center gap-2">
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" />
-                  <p className="text-[11px] font-bold text-rose-800">Backend unreachable</p>
+                  <p className="text-[11px] font-bold text-rose-800">Connection lost</p>
                 </div>
                 <p className="mt-1.5 text-[10.5px] leading-relaxed text-rose-700/80">
-                  Start the API on :8080 · retrying…
+                  Trying to reconnect…
                 </p>
               </div>
             ) : (
@@ -356,7 +359,7 @@ export function Sidebar({
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                   </span>
-                  <p className="text-[11px] font-bold text-emerald-800">Pipeline connected</p>
+                  <p className="text-[11px] font-bold text-emerald-800">System ready</p>
                 </div>
                 <p className="mt-1.5 text-[10.5px] leading-relaxed text-emerald-700/80">
                   {total} invoice{total === 1 ? '' : 's'} visible · {attentionCount} need attention

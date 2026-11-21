@@ -11,9 +11,9 @@ import {
   CreditCard,
   Download,
   FileText,
+  History,
   Landmark,
   Mail,
-  MoreHorizontal,
   Paperclip,
   Reply,
   Send,
@@ -52,6 +52,14 @@ interface PreviewPanelProps {
 }
 
 const teams = ['AP Team', 'Treasury', 'Procurement', 'Risk & Fraud']
+
+const approvalStatusLabels: Record<string, string> = {
+  PENDING: 'Waiting',
+  APPROVED: 'Approved',
+  REJECTED: 'Declined',
+  RETURNED: 'Returned',
+  VOID: 'Cancelled',
+}
 
 const actionIcons: Record<PanelActionKind, LucideIcon> = {
   approve: Check,
@@ -113,7 +121,7 @@ export function PreviewPanel({
       ? CreditCard
       : Landmark
   const paymentLabel = paymentLocked
-    ? 'EFT · LOCKED'
+    ? 'Payment on hold'
     : invoice.payment.kind === 'card'
       ? 'CARD · VIRTUAL'
       : 'EFT · BANK'
@@ -174,11 +182,11 @@ export function PreviewPanel({
           <button
             type="button"
             onClick={onAudit}
-            aria-label="View audit trail"
-            title="View audit trail"
+            aria-label="View activity and audit trail"
+            title="Activity & audit trail"
             className="icon-btn"
           >
-            <MoreHorizontal size={16} />
+            <History size={16} />
           </button>
         </div>
       </header>
@@ -190,7 +198,7 @@ export function PreviewPanel({
               <span className="flex h-5 w-5 items-center justify-center rounded-md bg-sky-600 text-[10px] font-bold text-white">
                 ✦
               </span>
-              <h3 className="text-[12px] font-bold text-slate-900">AI Fraud Summary</h3>
+              <h3 className="text-[12px] font-bold text-slate-900">Risk overview</h3>
               <span className="ml-auto flex flex-wrap items-center gap-1.5">
                 <RiskPill
                   tone={invoice.risk.tone}
@@ -218,7 +226,7 @@ export function PreviewPanel({
 
           {invoice.detail && invoice.detail.approvalSteps.length > 0 && (
             <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <h3 className="text-[12px] font-bold text-slate-900">Approval chain</h3>
+              <h3 className="text-[12px] font-bold text-slate-900">Approvals</h3>
               <ol className="mt-2 space-y-1.5">
                 {invoice.detail.approvalSteps.map((step) => {
                   const name = (id: string | null) => users.find((u) => u.id === id)?.fullName ?? id ?? 'unassigned'
@@ -228,7 +236,7 @@ export function PreviewPanel({
                         {step.stepNo}
                       </span>
                       <span className="font-semibold text-slate-800">{name(step.assignedUserId)}</span>
-                      {step.actingFor && <span className="text-slate-400">acting for {name(step.actingFor)}</span>}
+                      {step.actingFor && <span className="text-slate-400">on behalf of {name(step.actingFor)}</span>}
                       {step.reason && <span className="text-slate-400">· {step.reason}</span>}
                       <span
                         className={cn(
@@ -240,7 +248,7 @@ export function PreviewPanel({
                               : 'bg-rose-50 text-rose-700',
                         )}
                       >
-                        {step.status.toLowerCase()}
+                        {approvalStatusLabels[step.status] ?? step.status}
                       </span>
                     </li>
                   )
@@ -471,6 +479,9 @@ export function PreviewPanel({
             >
               <Reply size={14} /> Reply
             </button>
+            <button type="button" onClick={onAudit} className="action-secondary">
+              <History size={14} /> Audit trail
+            </button>
             {secondary.map((item) => {
               const Icon = actionIcons[item.kind]
               return (
@@ -566,9 +577,9 @@ function PipelineTracker({ nodes }: { nodes: NodeProgress[] }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-[12px] font-bold text-slate-900">Pipeline</h3>
+        <h3 className="text-[12px] font-bold text-slate-900">Progress</h3>
         <span className="text-[10.5px] font-semibold text-slate-400">
-          {done}/{nodes.length} nodes
+          {done}/{nodes.length} steps
         </span>
       </div>
       <ol className="mt-3 grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2">
