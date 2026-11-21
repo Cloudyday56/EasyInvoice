@@ -1,5 +1,7 @@
 package com.brim.easyinvoice.audit;
 
+import jakarta.persistence.Index;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -15,8 +17,8 @@ import java.time.Instant;
 
 /** One immutable row of audit_events. id is null until the row is inserted. */
 @Entity
-@Immutable   // Hibernate never issues an UPDATE for it (and the database trigger would refuse one anyway)
-@Table(name = "audit_events")
+@Immutable   // append-only: Hibernate never issues an UPDATE for an audit event
+@Table(name = "audit_events", indexes = @Index(columnList = "invoiceId"))
 @Getter
 @Builder(toBuilder = true)
 @NoArgsConstructor
@@ -35,6 +37,7 @@ public class AuditEvent {
     private String node;
     private String fromStatus;
     private String toStatus;
+    @Column(columnDefinition = "text")
     private String payloadJson;
     private Instant createdAt;
     private String prevHash;

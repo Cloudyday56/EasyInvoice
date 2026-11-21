@@ -105,8 +105,8 @@ public class PipelineRunner {
                 runJob(job);
             } catch (Exception e) {
                 // Should not happen (runJob handles node errors), but never let one bad job stop the loop.
-                log.error("Runner failed on job {}", job.id(), e);
-                jobs.markFailed(job.id(), e.toString());
+                log.error("Runner failed on job {}", job.getId(), e);
+                jobs.markFailed(job.getId(), e.toString());
             }
         }
     }
@@ -117,19 +117,19 @@ public class PipelineRunner {
     }
 
     private void runJob(Job job) {
-        Invoice invoice = invoices.get(job.invoiceId());
+        Invoice invoice = invoices.get(job.getInvoiceId());
         if (invoice.getStatus().isTerminal() || invoice.getStatus() == InvoiceStatus.ON_HOLD) {
-            jobs.markDone(job.id());  // stale job: the invoice moved on (or was parked) meanwhile
+            jobs.markDone(job.getId());  // stale job: the invoice moved on (or was parked) meanwhile
             return;
         }
-        invoices.updateCurrentNode(invoice.getId(), job.node().name());
+        invoices.updateCurrentNode(invoice.getId(), job.getNode().name());
         SourceDocument document = invoice.getSourceDocumentId() == null ? null : documents.get(invoice.getSourceDocumentId());
 
         StageResult result;
         try {
-            result = demoBlock(invoice, job.node(), document);
+            result = demoBlock(invoice, job.getNode(), document);
             if (result == null) {
-                result = nodes.get(job.node()).run(invoice, new NodeContext(document, job.attempts()));
+                result = nodes.get(job.getNode()).run(invoice, new NodeContext(document, job.getAttempts()));
             }
         } catch (Exception e) {
             handleCrash(job, invoice, e);
@@ -139,8 +139,8 @@ public class PipelineRunner {
         StageResult finalResult = result;
         transaction.executeWithoutResult(tx -> {
             // Reload inside the transaction so the entity is managed: its changes are saved when the transaction commits.
-            apply(invoices.get(invoice.getId()), job.node(), finalResult);
-            jobs.markDone(job.id());
+            apply(invoices.get(invoice.getId()), job.getNode(), finalResult);
+            jobs.markDone(job.getId());
         });
     }
 
@@ -197,20 +197,20 @@ public class PipelineRunner {
     /** A node threw: retry with exponential backoff (2s, 4s, ...), then park it in the node's queue. */
     private void handleCrash(Job job, Invoice invoice, Exception e) {
         String error = e.getClass().getSimpleName() + ": " + e.getMessage();
-        log.warn("Node {} failed on {} (attempt {}): {}", job.node(), invoice.getId(), job.attempts(), error);
-        if (job.attempts() < maxAttempts) {
-            long backoffMs = 1000L * (1L << job.attempts());
-            jobs.retryLater(job.id(), error, backoffMs);
-            audit.system(invoice.getId(), "node.RETRY", job.node().name(), null, null,
-                    Map.of("attempt", job.attempts(), "error", error, "retryInMs", backoffMs));
+        log.warn("Node {} failed on {} (attempt {}): {}", job.getNode(), invoice.getId(), job.getAttempts(), error);
+        if (job.getAttempts() < maxAttempts) {
+            long backoffMs = 1000L * (1L << job.getAttempts());
+            jobs.retryLater(job.getId(), error, backoffMs);
+            audit.system(invoice.getId(), "node.RETRY", job.getNode().name(), null, null,
+                    Map.of("attempt", job.getAttempts(), "error", error, "retryInMs", backoffMs));
             return;
         }
         transaction.executeWithoutResult(tx -> {
-            jobs.markFailed(job.id(), error);
-            String message = job.node().label() + " failed after " + maxAttempts + " attempts: " + error;
-            flags.save(new Flag(invoice.getId(), job.node().name(), "NODE_FAILED", "BLOCK", message));
-            stateMachine.hold(invoices.get(invoice.getId()), job.node().failureQueue(), "NODE_FAILED", message,
-                    Actor.SYSTEM, job.node().name());
+            jobs.markFailed(job.getId(), error);
+            String message = job.getNode().label() + " failed after " + maxAttempts + " attempts: " + error;
+            flags.save(new Flag(invoice.getId(), job.getNode().name(), "NODE_FAILED", "BLOCK", message));
+            stateMachine.hold(invoices.get(invoice.getId()), job.getNode().failureQueue(), "NODE_FAILED", message,
+                    Actor.SYSTEM, job.getNode().name());
         });
     }
 

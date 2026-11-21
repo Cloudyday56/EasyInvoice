@@ -2,12 +2,14 @@ package com.brim.easyinvoice.pipeline.nodes;
 
 import com.brim.easyinvoice.model.Invoice;
 import com.brim.easyinvoice.model.Payment;
+import com.brim.easyinvoice.model.PaymentNumber;
 import com.brim.easyinvoice.model.Vendor;
 import com.brim.easyinvoice.pipeline.HoldQueue;
 import com.brim.easyinvoice.pipeline.Node;
 import com.brim.easyinvoice.pipeline.NodeContext;
 import com.brim.easyinvoice.pipeline.NodeName;
 import com.brim.easyinvoice.pipeline.StageResult;
+import com.brim.easyinvoice.repo.PaymentNumberRepository;
 import com.brim.easyinvoice.repo.PaymentRepository;
 import com.brim.easyinvoice.repo.VendorRepository;
 import org.springframework.stereotype.Component;
@@ -27,10 +29,13 @@ import java.util.Optional;
 public class PaymentSchedulingNode implements Node {
 
     private final PaymentRepository payments;
+    private final PaymentNumberRepository paymentNumbers;
     private final VendorRepository vendors;
 
-    public PaymentSchedulingNode(PaymentRepository payments, VendorRepository vendors) {
+    public PaymentSchedulingNode(PaymentRepository payments, PaymentNumberRepository paymentNumbers,
+                                 VendorRepository vendors) {
         this.payments = payments;
+        this.paymentNumbers = paymentNumbers;
         this.vendors = vendors;
     }
 
@@ -57,7 +62,7 @@ public class PaymentSchedulingNode implements Node {
         LocalDate payDate = invoice.getDueDate() != null ? invoice.getDueDate() : LocalDate.now().plusDays(terms);
 
         Payment payment = new Payment();
-        payment.setId(String.format("EP-%05d", payments.nextPaymentNumber()));
+        payment.setId(String.format("EP-%05d", paymentNumbers.save(new PaymentNumber()).getId()));
         payment.setIdempotencyKey(payment.getId());
         payment.setInvoiceId(invoice.getId());
         payment.setVendorId(vendor.getId());

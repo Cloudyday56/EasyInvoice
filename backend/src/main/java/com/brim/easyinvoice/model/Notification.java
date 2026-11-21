@@ -26,6 +26,7 @@ public class Notification {
     private String userId;
     private String template;
     private String invoiceId;
+    @Column(columnDefinition = "text")
     private String message;
     @Column(name = "is_read")
     private boolean read;

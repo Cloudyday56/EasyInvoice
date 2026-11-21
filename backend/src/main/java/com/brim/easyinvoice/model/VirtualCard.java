@@ -1,5 +1,6 @@
 package com.brim.easyinvoice.model;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -25,6 +26,7 @@ public class VirtualCard {
     private Long id;
     private String paymentId;
     private String maskedNumber;
+    @Column(precision = 14, scale = 2)
     private BigDecimal amountLimit;
     private String merchantLock;       // vendor id
     private OffsetDateTime expiresAt;

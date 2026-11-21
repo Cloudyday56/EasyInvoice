@@ -1,5 +1,6 @@
 package com.brim.easyinvoice.model;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -10,6 +11,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 @Entity
 @Table(name = "users")
@@ -29,10 +31,15 @@ public class User {
     private Role role;
     private String sourceRole;      // role as written in users.csv (ap_clerk, auditor...)
     private boolean readOnly;       // auditor: an Admin who can only look
+    @Column(precision = 14, scale = 2)
     private BigDecimal approvalLimitCad;
+    @Column(precision = 14, scale = 2)
     private BigDecimal releaseLimitCad;
     private String status;          // active | on_leave | terminated
     private String delegateUserId;
+    private String workProvince;
+    private LocalDate statusSince;
+    private LocalDate hireDate;
 
     public boolean isActive() {
         return !"terminated".equals(status);

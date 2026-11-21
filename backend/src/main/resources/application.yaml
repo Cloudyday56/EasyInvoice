@@ -2,21 +2,13 @@ spring:
   application:
     name: easyinvoice
   datasource:
-    # stringtype=unspecified lets Postgres cast text parameters to the column type
-    # (numeric, date, boolean, jsonb). The seed loader relies on it to insert CSV values as-is.
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/easyinvoice?stringtype=unspecified}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/easyinvoice}
     username: ${DB_USER:easyinvoice}
     password: ${DB_PASSWORD:easyinvoice}
-  sql:
-    init:
-      mode: always  # Spring runs schema.sql at startup, before Hibernate validates the mapping
-      # schema.sql contains a trigger function with ';' inside $$...$$, which Spring's script splitter
-      # would cut in half. A separator that never appears makes it run the whole file as one statement.
-      separator: "^^^ END OF SCRIPT ^^^"
   jpa:
     open-in-view: false
     hibernate:
-      ddl-auto: validate  # schema.sql owns the tables; Hibernate only checks the entities match them
+      ddl-auto: update  # Hibernate creates and updates the tables from the entities
   servlet:
     multipart:
       max-file-size: 10MB

@@ -20,6 +20,10 @@ import java.util.Map;
 @RequestMapping("/api")
 public class UserController {
 
+    /** What the UI needs to show a vendor's name; bank details and tax numbers stay on the server. */
+    public record VendorOption(String id, String legalName, String category, String status) {
+    }
+
     private final UserRepository users;
     private final CurrentUser currentUser;
     private final NotificationService notifications;
@@ -51,7 +55,8 @@ public class UserController {
     public Map<String, Object> lookups(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId) {
         currentUser.require(userId);
         return Map.of(
-                "vendors", vendors.findAll(Sort.by("legalName")),
+                "vendors", vendors.findAll(Sort.by("legalName")).stream()
+                        .map(v -> new VendorOption(v.getId(), v.getLegalName(), v.getCategory(), v.getStatus())).toList(),
                 "departments", departments.findAll(Sort.by("id")));
     }
 

@@ -37,10 +37,6 @@ public interface InvoiceRepository extends JpaRepository<Invoice, String> {
     /** Repeat guard: does another invoice from this vendor already have this canonical number? */
     boolean existsByVendorIdAndCanonicalInvoiceNumberAndIdNot(String vendorId, String canonicalNumber, String invoiceId);
 
-    /** Next number for ids like EI-00001 (new invoices; the seeded history keeps its AP-xxxxx ids). */
-    @Query(value = "select nextval('new_invoice_seq')", nativeQuery = true)
-    long nextInvoiceNumber();
-
     /** Written before a node runs, so the UI can show which node is working. */
     @Modifying
     @Transactional

@@ -1,5 +1,6 @@
 package com.brim.easyinvoice.model;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -27,6 +28,7 @@ public class Flag {
     private String node;
     private String code;
     private String severity;
+    @Column(columnDefinition = "text")
     private String message;
     @CreationTimestamp
     private OffsetDateTime createdAt;

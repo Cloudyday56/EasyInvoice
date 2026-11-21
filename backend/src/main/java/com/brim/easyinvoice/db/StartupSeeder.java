@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * On startup: load /data into the database if it is empty.
- * (The tables themselves are created earlier by Spring, from schema.sql.)
+ * (The tables themselves are created earlier by Hibernate, from the entities.)
  */
 @Component
 public class StartupSeeder implements ApplicationRunner {

@@ -1,5 +1,6 @@
 package com.brim.easyinvoice.model;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -27,14 +28,23 @@ public class Payment {
     private LocalDate scheduledDate;
     private LocalDate paidDate;
     private String currency;
+    @Column(precision = 14, scale = 2)
     private BigDecimal amount;
+    @Column(precision = 10, scale = 4)
+    private BigDecimal fxRateToCad;
+    @Column(precision = 14, scale = 2)
     private BigDecimal amountCad;
+    @Column(precision = 14, scale = 2)
+    private BigDecimal discountTaken;
     private String reference;
     private String status;
+    private String sourceStatus;      // status as written in payments.csv (history only)
+    @Column(unique = true)
     private String idempotencyKey;    // = payment id; a retry can never pay twice
     private String preparedBy;
     private String releasedBy;
     private OffsetDateTime releasedAt;
     private OffsetDateTime sentAt;
+    @Column(columnDefinition = "text")
     private String failureReason;
 }

@@ -1,8 +1,9 @@
 package com.brim.easyinvoice.db;
 
-import org.springframework.jdbc.core.JdbcTemplate;
-
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * approval_policies.csv writes its conditions in plain English, so they cannot be loaded mechanically.
@@ -60,12 +61,19 @@ final class PolicySeeds {
                     "{\"enforced_in\": \"ValidationRulesNode (TODO: vendors.requires_po)\"}",
                     "Vendor category requires a PO -> PO number present"));
 
-    static int insertAll(JdbcTemplate jdbc) {
+    /** The policies as rows for SeedLoader to insert (column name -> value). */
+    static List<Map<String, Object>> rows() {
+        List<Map<String, Object>> rows = new ArrayList<>();
         int order = 0;
         for (Policy p : POLICIES) {
-            jdbc.update("INSERT INTO policies (id, rule_type, rule_json, source_text, sort_order) VALUES (?, ?, ?, ?, ?)",
-                    p.id(), p.ruleType(), p.json(), p.sourceText(), order++);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", p.id());
+            row.put("rule_type", p.ruleType());
+            row.put("rule_json", p.json());
+            row.put("source_text", p.sourceText());
+            row.put("sort_order", order++);
+            rows.add(row);
         }
-        return POLICIES.size();
+        return rows;
     }
 }

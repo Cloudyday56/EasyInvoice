@@ -24,8 +24,8 @@ Three containers start:
 | `backend` | http://localhost:8080 | Spring Boot API + pipeline runner |
 | `db` | localhost:5432 | Postgres 16 (db/user/password `easyinvoice`) |
 
-On first start Spring runs `backend/src/main/resources/schema.sql` (the tables), Hibernate checks the
-entities match it (`ddl-auto=validate`), and the backend loads `/data` into the database. Data persists in a Docker volume; **Audit & tools → Reset demo** wipes
+On first start Hibernate creates the tables from the entities in `backend/.../model` (`ddl-auto=update`; there is no
+SQL schema file), and the backend loads `/data` into the database. Data persists in a Docker volume; **Audit & tools → Reset demo** wipes
 everything and reloads it. `docker compose down -v` deletes the volumes too.
 
 ### LLM (OpenRouter)
@@ -66,7 +66,7 @@ Things to show the judges:
 - **Approver ≠ releaser.** Upload as **Kavya Morrison** (Facilities). The manager Liam is on leave, so routing assigns the delegate **Elise** (`acting_for` is recorded). After Elise approves, she is refused the release, so **Marcus Webb** releases it.
 - **Exception queue + resume.** Upload a file whose name contains `block-<node>`, e.g. `test_block-vendor-match.pdf`. It parks in **Needs attention → Vendor hold**. Resume it with a reason and it re-enters at the right node, with the override kept on the flag.
 - **Inbox.** **Audit & tools → Poll AP inbox** ingests `emails.json`. Email has no requester, so most items land in **Routing error**. Emails without attachments become **Missing document** or **Ignored mail**.
-- **Tamper evidence.** The DB rejects `UPDATE`/`DELETE` on `audit_events` (trigger). If a row is changed anyway, verify names the broken row.
+- **Tamper evidence.** Each audit event stores the hash of the one before it. If any row is changed or removed, **Verify chain** names the first broken row.
 
 ## How it fits together
 
@@ -89,13 +89,20 @@ human actions (approve, resume, release) ──► HumanActionService ──► 
 | Security | `security/AuthorizationService.java` | `authorize(user, action, invoice)`, rules in pure `decide()` |
 | Audit | `audit/AuditHasher.java`, `AuditService.java` | `hash = sha256(prev_hash + row)`, verify, CSV |
 | Data access | `model/*` (entities), `repo/*` (Spring Data repositories) | Plain JPA: one entity and one repository per table the app reads or writes |
-| Seed | `db/SeedLoader.java`, `PolicySeeds.java` | CSV → tables with `JdbcTemplate` (bulk insert); reset demo |
+| Seed | `db/SeedLoader.java`, `PolicySeeds.java` | Each CSV row → its entity (Jackson) → saved with JPA; reset demo |
 
 Outcomes: `PASS` / `FLAG` go to the next node. `BLOCK` parks the invoice in a queue. `WAIT` means
 waiting for a person, or re-checking the bank. `IGNORE` means not an invoice.
 
-Raw SQL (`JdbcTemplate`) is used in only three places where JPA is a poor fit: the job queue
-(`FOR UPDATE SKIP LOCKED`), the audit append lock, and the CSV bulk seed.
+There is no hand-written SQL: all 22 tables are JPA entities, and the code uses Spring Data repositories.
+Three things that used to need SQL are done with JPA features instead:
+- **Job queue:** `@Lock(PESSIMISTIC_WRITE)` with lock timeout -2, which Hibernate turns into `FOR UPDATE SKIP LOCKED`.
+- **Audit append lock:** the single `audit_head` row is locked while an event is appended.
+- **Invoice and payment numbers (EI-00001, EP-00001):** the id of an `InvoiceNumber` / `PaymentNumber` row, which comes from a JPA `@SequenceGenerator`.
+
+Trade-offs of letting Hibernate own the schema: there are no foreign keys (the entities hold plain id columns), and
+**Reset demo** empties the tables but does not restart the number sequences. If you have an older Docker volume from
+before this change, run `docker compose down -v` once so Hibernate starts from a clean database.
 
 **Login** is a user switcher: the UI sends `X-User-Id`, and the server re-reads that user's role
 and limits on every request. No passwords, because this is a demo.

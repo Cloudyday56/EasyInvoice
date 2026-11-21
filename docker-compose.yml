@@ -25,7 +25,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      DB_URL: jdbc:postgresql://db:5432/easyinvoice?stringtype=unspecified
+      DB_URL: jdbc:postgresql://db:5432/easyinvoice
       DB_USER: easyinvoice
       DB_PASSWORD: easyinvoice
       DATA_DIR: /data

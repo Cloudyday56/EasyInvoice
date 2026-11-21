@@ -1,12 +1,34 @@
 package com.brim.easyinvoice.db;
 
 import com.brim.easyinvoice.audit.AuditService;
+import com.brim.easyinvoice.model.BankChangeRequest;
+import com.brim.easyinvoice.model.BankStatementLine;
+import com.brim.easyinvoice.model.CardTransaction;
+import com.brim.easyinvoice.model.Contract;
+import com.brim.easyinvoice.model.Department;
+import com.brim.easyinvoice.model.Flag;
+import com.brim.easyinvoice.model.FxRate;
+import com.brim.easyinvoice.model.GlAccount;
+import com.brim.easyinvoice.model.Invoice;
+import com.brim.easyinvoice.model.InvoiceLine;
 import com.brim.easyinvoice.model.InvoiceNumbers;
+import com.brim.easyinvoice.model.Payment;
+import com.brim.easyinvoice.model.Policy;
+import com.brim.easyinvoice.model.PurchaseOrder;
+import com.brim.easyinvoice.model.TaxCode;
+import com.brim.easyinvoice.model.User;
+import com.brim.easyinvoice.model.Vendor;
+import com.brim.easyinvoice.model.ApprovalStep;
+import com.brim.easyinvoice.repo.FlagRepository;
+import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.PropertyNamingStrategies;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,24 +40,34 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * Loads the sample dataset from data/data/*.csv into the tables, in foreign-key order.
+ * Loads the sample dataset from data/data/*.csv into the tables.
  *
- * Values go in as text and Postgres casts them to the column type (the JDBC URL sets
- * stringtype=unspecified). Empty cells become NULL. "yes"/"no" are valid Postgres booleans.
+ * Each CSV row becomes a map (snake_case column name -> text), is converted to the table's entity by Jackson
+ * (snake_case names match the entity fields, text becomes numbers/dates/enums), and is saved with JPA.
+ * Jackson is strict: a CSV column the entity does not have fails the load instead of being dropped silently.
  *
  * Historical invoices are loaded with their final status; they do not go through the pipeline.
  */
 @Component
+@Transactional   // one transaction for the whole seed; DemoResetService's transaction is joined when resetting
 public class SeedLoader {
 
     private static final Logger log = LoggerFactory.getLogger(SeedLoader.class);
+    private static final int FLUSH_EVERY = 500;
 
-    private final JdbcTemplate jdbc;
+    private final ObjectMapper csvMapper = JsonMapper.builder()
+            .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
+            .build();
+
+    private final EntityManager entityManager;
+    private final FlagRepository flags;
     private final AuditService audit;
     private final Path csvDir;
 
-    public SeedLoader(JdbcTemplate jdbc, AuditService audit, @Value("${app.data-dir}") String dataDir) {
-        this.jdbc = jdbc;
+    public SeedLoader(EntityManager entityManager, FlagRepository flags, AuditService audit,
+                      @Value("${app.data-dir}") String dataDir) {
+        this.entityManager = entityManager;
+        this.flags = flags;
         this.audit = audit;
         this.csvDir = Path.of(dataDir).resolve("data");
     }
@@ -44,27 +76,27 @@ public class SeedLoader {
         log.info("Seeding from {}", csvDir.toAbsolutePath());
         Map<String, Object> counts = new LinkedHashMap<>();
 
-        counts.put("departments", load("departments.csv", "departments", row -> rename(row, "department_id", "id")));
-        counts.put("users", load("users.csv", "users", SeedLoader::userRow));
-        counts.put("gl_accounts", load("gl_accounts.csv", "gl_accounts", row -> new LinkedHashMap<>(row)));
-        counts.put("vendors", load("vendors.csv", "vendors", row -> rename(row, "vendor_id", "id")));
-        counts.put("bank_change_requests", load("bank_change_history.csv", "bank_change_requests", SeedLoader::bankChangeRow));
-        counts.put("purchase_orders", load("purchase_orders.csv", "purchase_orders", row -> rename(row, "po_id", "id")));
-        counts.put("contracts", load("contracts.csv", "contracts", row -> rename(row, "contract_id", "id")));
-        counts.put("tax_codes", load("tax_codes.csv", "tax_codes", row -> new LinkedHashMap<>(row)));
-        counts.put("fx_rates", load("fx_rates.csv", "fx_rates", row -> new LinkedHashMap<>(row)));
-        counts.put("policies", PolicySeeds.insertAll(jdbc));
+        counts.put("departments", load("departments.csv", Department.class, row -> rename(row, "department_id", "id")));
+        counts.put("users", load("users.csv", User.class, SeedLoader::userRow));
+        counts.put("gl_accounts", load("gl_accounts.csv", GlAccount.class, SeedLoader::asRow));
+        counts.put("vendors", load("vendors.csv", Vendor.class, SeedLoader::vendorRow));
+        counts.put("bank_change_requests", load("bank_change_history.csv", BankChangeRequest.class, SeedLoader::bankChangeRow));
+        counts.put("purchase_orders", load("purchase_orders.csv", PurchaseOrder.class, row -> rename(row, "po_id", "id")));
+        counts.put("contracts", load("contracts.csv", Contract.class, SeedLoader::contractRow));
+        counts.put("tax_codes", load("tax_codes.csv", TaxCode.class, SeedLoader::asRow));
+        counts.put("fx_rates", load("fx_rates.csv", FxRate.class, row -> rename(row, "date", "rate_date")));
+        counts.put("policies", persistAll(Policy.class, PolicySeeds.rows()));
 
         Map<String, String> firstInvoiceByNumber = new HashMap<>();
         List<String[]> repeats = new ArrayList<>();
-        counts.put("invoices", load("invoices.csv", "invoices", row -> invoiceRow(row, firstInvoiceByNumber, repeats)));
+        counts.put("invoices", load("invoices.csv", Invoice.class, row -> invoiceRow(row, firstInvoiceByNumber, repeats)));
         flagHistoricalRepeats(repeats);
 
-        counts.put("invoice_lines", load("invoice_lines.csv", "invoice_lines", row -> new LinkedHashMap<>(row)));
-        counts.put("approval_steps", load("approvals.csv", "approval_steps", SeedLoader::approvalRow));
-        counts.put("payments", load("payments.csv", "payments", SeedLoader::paymentRow));
-        counts.put("card_transactions", load("card_transactions.csv", "card_transactions", row -> rename(row, "txn_id", "id")));
-        counts.put("bank_statement_lines", load("bank_statement.csv", "bank_statement_lines", row -> rename(row, "bank_txn_id", "id")));
+        counts.put("invoice_lines", load("invoice_lines.csv", InvoiceLine.class, SeedLoader::asRow));
+        counts.put("approval_steps", load("approvals.csv", ApprovalStep.class, SeedLoader::approvalRow));
+        counts.put("payments", load("payments.csv", Payment.class, SeedLoader::paymentRow));
+        counts.put("card_transactions", load("card_transactions.csv", CardTransaction.class, SeedLoader::cardTransactionRow));
+        counts.put("bank_statement_lines", load("bank_statement.csv", BankStatementLine.class, row -> rename(row, "bank_txn_id", "id")));
 
         // TODO: inbox/emails.json and incoming_invoices/ are NOT seeded on purpose:
         //       they are unprocessed mail. An Admin pulls them in with "Poll inbox" (POST /api/admin/poll-inbox).
@@ -75,34 +107,64 @@ public class SeedLoader {
 
     // ---------- generic loader ----------
 
-    /** Reads one CSV, converts each row with toRow, and batch-inserts it. Returns the row count. */
-    private int load(String fileName, String table, Function<Map<String, String>, Map<String, Object>> toRow) {
+    /** Reads one CSV, converts each row with toRow, and saves it as the given entity. Returns the row count. */
+    private <T> int load(String fileName, Class<T> entityType,
+                         Function<Map<String, String>, Map<String, Object>> toRow) {
         Path file = csvDir.resolve(fileName);
         if (!Files.exists(file)) {
-            log.warn("TODO seed: {} not found, table {} left empty", file, table);
+            log.warn("TODO seed: {} not found, {} left empty", file, entityType.getSimpleName());
             return 0;
         }
-        List<Map<String, Object>> rows = CsvReader.read(file).stream().map(toRow).toList();
-        if (rows.isEmpty()) return 0;
+        return persistAll(entityType, CsvReader.read(file).stream().map(toRow).toList());
+    }
 
-        List<String> columns = new ArrayList<>(rows.getFirst().keySet());
-        String sql = "INSERT INTO " + table + " (" + String.join(", ", columns) + ") VALUES ("
-                + String.join(", ", columns.stream().map(c -> "?").toList()) + ")";
-        List<Object[]> values = rows.stream()
-                .map(row -> columns.stream().map(c -> emptyToNull(row.get(c))).toArray())
-                .toList();
-        jdbc.batchUpdate(sql, values);
-        return rows.size();
+    private <T> int persistAll(Class<T> entityType, List<Map<String, Object>> rows) {
+        int count = 0;
+        for (Map<String, Object> row : rows) {
+            row.replaceAll((column, value) -> emptyToNull(value));
+            entityManager.persist(csvMapper.convertValue(row, entityType));
+            if (++count % FLUSH_EVERY == 0) {
+                entityManager.flush();
+                entityManager.clear();
+            }
+        }
+        entityManager.flush();
+        entityManager.clear();
+        return count;
     }
 
     private static Object emptyToNull(Object value) {
         return (value instanceof String s && s.isEmpty()) ? null : value;
     }
 
+    private static Map<String, Object> asRow(Map<String, String> row) {
+        return new LinkedHashMap<>(row);
+    }
+
     private static Map<String, Object> rename(Map<String, String> row, String from, String to) {
         Map<String, Object> out = new LinkedHashMap<>();
         row.forEach((key, value) -> out.put(key.equals(from) ? to : key, value));
         return out;
+    }
+
+    /** The CSVs write booleans as yes/no. Anything else is a data problem, so it fails loudly. */
+    private static Map<String, Object> yesNoToBoolean(Map<String, Object> row, String... columns) {
+        for (String column : columns) {
+            Object value = row.get(column);
+            if (value instanceof String s && !s.isEmpty()) {
+                if (!s.equals("yes") && !s.equals("no")) {
+                    throw new IllegalArgumentException("Expected yes/no in column " + column + " but found: " + s);
+                }
+                row.put(column, s.equals("yes"));
+            }
+        }
+        return row;
+    }
+
+    /** Dates become midnight UTC; local date-times ("2026-01-03T15:59:00") are taken as UTC. */
+    private static String atUtc(String value) {
+        if (value == null || value.isEmpty()) return value;
+        return value.length() == 10 ? value + "T00:00:00Z" : value + "Z";
     }
 
     // ---------- per-table conversions ----------
@@ -129,10 +191,22 @@ public class SeedLoader {
         return out;
     }
 
+    static Map<String, Object> vendorRow(Map<String, String> row) {
+        return yesNoToBoolean(rename(row, "vendor_id", "id"), "accepts_card_payment", "requires_po");
+    }
+
+    static Map<String, Object> contractRow(Map<String, String> row) {
+        return yesNoToBoolean(rename(row, "contract_id", "id"), "auto_renew");
+    }
+
     static Map<String, Object> bankChangeRow(Map<String, String> row) {
         Map<String, Object> out = rename(row, "change_id", "id");
         out.put("status", "yes".equals(row.get("verified_by_callback")) ? "VERIFIED" : "PENDING");
-        return out;
+        return yesNoToBoolean(out, "verified_by_callback");
+    }
+
+    static Map<String, Object> cardTransactionRow(Map<String, String> row) {
+        return yesNoToBoolean(rename(row, "txn_id", "id"), "receipt_attached");
     }
 
     /** invoices.csv statuses are lower-case; ours are upper-case. The original is kept in source_status. */
@@ -148,7 +222,7 @@ public class SeedLoader {
             case "rejected" -> "REJECTED";
             default -> throw new IllegalArgumentException("Unknown invoice status: " + row.get("status"));
         });
-        out.put("created_at", row.get("received_date"));
+        out.put("created_at", atUtc(row.get("received_date")));
 
         // The history contains repeated (vendor, invoice number) pairs. The unique constraint would refuse them,
         // so the later copy is loaded WITHOUT a canonical number and gets a visible flag. Nothing is dropped.
@@ -158,7 +232,6 @@ public class SeedLoader {
         if (first == null) {
             out.put("canonical_invoice_number", canonical);
         } else {
-            out.put("canonical_invoice_number", null);
             repeats.add(new String[]{row.get("invoice_id"), first, row.get("vendor_invoice_number")});
         }
         return out;
@@ -167,9 +240,8 @@ public class SeedLoader {
     private void flagHistoricalRepeats(List<String[]> repeats) {
         for (String[] r : repeats) {
             log.warn("Historical repeat: {} has the same vendor and invoice number ({}) as {}", r[0], r[2], r[1]);
-            jdbc.update("INSERT INTO flags (invoice_id, node, code, severity, message) VALUES (?, 'SEED', ?, 'FLAG', ?)",
-                    r[0], "HISTORICAL_REPEAT_NUMBER",
-                    "Same vendor and invoice number " + r[2] + " as " + r[1] + " (possible double payment in history)");
+            flags.save(new Flag(r[0], "SEED", "HISTORICAL_REPEAT_NUMBER", "FLAG",
+                    "Same vendor and invoice number " + r[2] + " as " + r[1] + " (possible double payment in history)"));
         }
     }
 
@@ -187,9 +259,9 @@ public class SeedLoader {
             default -> throw new IllegalArgumentException("Unknown approval action: " + row.get("action"));
         });
         out.put("acted_by", row.get("approver_user_id"));
-        out.put("acted_at", row.get("acted_at"));
+        out.put("acted_at", atUtc(row.get("acted_at")));
         out.put("comment", row.get("comment"));
-        out.put("created_at", row.get("acted_at"));
+        out.put("created_at", atUtc(row.get("acted_at")));
         return out;
     }
 

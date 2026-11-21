@@ -21,5 +21,6 @@ public class FxRate {
     @Id
     @Column(name = "date")
     private LocalDate rateDate;
+    @Column(precision = 10, scale = 4)
     private BigDecimal usdToCad;
 }

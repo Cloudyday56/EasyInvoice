@@ -1,7 +1,6 @@
 package com.brim.easyinvoice.audit;
 
 import org.springframework.data.domain.PageRequest;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
@@ -15,16 +14,13 @@ import java.util.Map;
 @Service
 public class AuditService {
 
-    /** Any constant works; it just names "the audit append lock" in Postgres. */
-    private static final long APPEND_LOCK_ID = 4242;
-
     private final AuditEventRepository events;
-    private final JdbcTemplate jdbc;
+    private final AuditHeadRepository heads;
     private final ObjectMapper json;
 
-    public AuditService(AuditEventRepository events, JdbcTemplate jdbc, ObjectMapper json) {
+    public AuditService(AuditEventRepository events, AuditHeadRepository heads, ObjectMapper json) {
         this.events = events;
-        this.jdbc = jdbc;
+        this.heads = heads;
         this.json = json;
     }
 
@@ -36,15 +32,14 @@ public class AuditService {
     }
 
     /**
-     * Appends one event. The advisory lock makes appends take turns until the surrounding
+     * Appends one event. Locking the head row makes appends take turns until the surrounding
      * transaction commits, so two writers can never both chain onto the same prev_hash.
      */
     @Transactional
     public void record(Actor actor, String invoiceId, String paymentId, String action, String node,
                        String fromStatus, String toStatus, Map<String, ?> payload) {
-        jdbc.queryForObject("SELECT pg_advisory_xact_lock(?)", Object.class, APPEND_LOCK_ID);
-
-        String prevHash = events.findFirstByOrderByIdDesc().map(AuditEvent::getHash).orElse(AuditHasher.GENESIS);
+        AuditHead head = heads.findForUpdateById(AuditHead.ID).orElseGet(() -> heads.save(new AuditHead()));
+        String prevHash = head.getLastHash();
 
         // Postgres stores microseconds, so truncate now; otherwise the re-read value would hash differently.
         Instant createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
@@ -56,7 +51,9 @@ public class AuditService {
                 .action(action).node(node).fromStatus(fromStatus).toStatus(toStatus)
                 .payloadJson(payloadJson).createdAt(createdAt).prevHash(prevHash)
                 .build();
-        events.save(draft.toBuilder().hash(AuditHasher.hash(prevHash, draft)).build());
+        String hash = AuditHasher.hash(prevHash, draft);
+        events.save(draft.toBuilder().hash(hash).build());
+        head.setLastHash(hash);
     }
 
     public List<AuditEvent> forInvoice(String invoiceId) {

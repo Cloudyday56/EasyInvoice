@@ -3,11 +3,13 @@ package com.brim.easyinvoice.intake;
 import com.brim.easyinvoice.audit.Actor;
 import com.brim.easyinvoice.audit.AuditService;
 import com.brim.easyinvoice.model.Invoice;
+import com.brim.easyinvoice.model.InvoiceNumber;
 import com.brim.easyinvoice.model.InvoiceStatus;
 import com.brim.easyinvoice.model.SourceDocument;
 import com.brim.easyinvoice.model.User;
 import com.brim.easyinvoice.pipeline.NodeName;
 import com.brim.easyinvoice.pipeline.PipelineRunner;
+import com.brim.easyinvoice.repo.InvoiceNumberRepository;
 import com.brim.easyinvoice.repo.InvoiceRepository;
 import com.brim.easyinvoice.repo.SourceDocumentRepository;
 import com.brim.easyinvoice.security.Action;
@@ -57,6 +59,7 @@ public class IntakeService {
 
     private final SourceDocumentRepository documents;
     private final InvoiceRepository invoices;
+    private final InvoiceNumberRepository invoiceNumbers;
     private final FileStorage storage;
     private final AuthorizationService authorization;
     private final AuditService audit;
@@ -64,11 +67,13 @@ public class IntakeService {
     private final ObjectMapper json;
     private final Path dataDir;
 
-    public IntakeService(SourceDocumentRepository documents, InvoiceRepository invoices, FileStorage storage,
+    public IntakeService(SourceDocumentRepository documents, InvoiceRepository invoices,
+                         InvoiceNumberRepository invoiceNumbers, FileStorage storage,
                          AuthorizationService authorization, AuditService audit, PipelineRunner runner,
                          ObjectMapper json, @Value("${app.data-dir}") String dataDir) {
         this.documents = documents;
         this.invoices = invoices;
+        this.invoiceNumbers = invoiceNumbers;
         this.storage = storage;
         this.authorization = authorization;
         this.audit = audit;
@@ -149,7 +154,7 @@ public class IntakeService {
 
         // The uploader is the requester; their department pays. Email has no requester (routing will ask).
         Invoice invoice = new Invoice();
-        invoice.setId(String.format("EI-%05d", invoices.nextInvoiceNumber()));
+        invoice.setId(String.format("EI-%05d", invoiceNumbers.save(new InvoiceNumber()).getId()));
         invoice.setSourceDocumentId(document.getId());
         invoice.setRequesterUserId(uploader == null ? null : uploader.getId());
         invoice.setDepartmentId(uploader == null ? null : uploader.getDepartmentId());

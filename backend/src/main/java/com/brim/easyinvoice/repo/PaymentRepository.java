@@ -25,8 +25,4 @@ public interface PaymentRepository extends JpaRepository<Payment, String> {
     default Optional<Payment> activeForInvoice(String invoiceId) {
         return findFirstByInvoiceIdAndStatusNotOrderByIdDesc(invoiceId, "FAILED");
     }
-
-    /** Next number for ids like EP-00001. */
-    @Query(value = "select nextval('new_payment_seq')", nativeQuery = true)
-    long nextPaymentNumber();
 }

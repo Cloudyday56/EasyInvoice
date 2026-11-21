@@ -4,11 +4,13 @@ import com.brim.easyinvoice.audit.AuditService;
 import com.brim.easyinvoice.db.DemoResetService;
 import com.brim.easyinvoice.intake.IntakeService;
 import com.brim.easyinvoice.model.Flag;
+import com.brim.easyinvoice.model.Invoice;
 import com.brim.easyinvoice.model.InvoiceStatus;
 import com.brim.easyinvoice.model.Payment;
 import com.brim.easyinvoice.model.User;
 import com.brim.easyinvoice.pipeline.HumanActionService;
 import com.brim.easyinvoice.repo.FlagRepository;
+import com.brim.easyinvoice.repo.FxRateRepository;
 import com.brim.easyinvoice.repo.InvoiceRepository;
 import com.brim.easyinvoice.repo.PaymentRepository;
 import com.brim.easyinvoice.repo.UserRepository;
@@ -25,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.jdbc.DataSourceBuilder;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -35,6 +38,7 @@ import tools.jackson.databind.ObjectMapper;
 import javax.sql.DataSource;
 import java.io.IOException;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,7 +47,7 @@ import static org.awaitility.Awaitility.await;
 
 /**
  * The whole skeleton against a real PostgreSQL (started inside the test, no Docker needed):
- * schema.sql, the JPA mapping check, the CSV seed, the pipeline runner, approvals, release, the audit chain.
+ * the schema Hibernate generates, the CSV seed, the pipeline runner, approvals, release, the audit chain.
  */
 @SpringBootTest(properties = {
         "app.pipeline.poll-ms=100",
@@ -66,7 +70,7 @@ class PipelineEndToEndTest {
         @Bean
         DataSource dataSource(EmbeddedPostgres postgres) {
             return DataSourceBuilder.create()
-                    .url("jdbc:postgresql://localhost:" + postgres.getPort() + "/postgres?stringtype=unspecified")
+                    .url("jdbc:postgresql://localhost:" + postgres.getPort() + "/postgres")
                     .username("postgres").password("postgres").build();
         }
     }
@@ -79,6 +83,7 @@ class PipelineEndToEndTest {
     @Autowired PaymentRepository payments;
     @Autowired UserRepository users;
     @Autowired FlagRepository flags;
+    @Autowired FxRateRepository fxRates;
     @Autowired ObjectMapper json;
     @Autowired InvoiceController invoiceController;
     @Autowired PaymentController paymentController;
@@ -179,6 +184,30 @@ class PipelineEndToEndTest {
         assertThat(users.count()).isEqualTo(40);
         assertThat(invoices.count()).isEqualTo(426);
         assertThat(audit.verifyChain().valid()).isTrue();
+
+        // Seeded values keep their exact decimals (4 places for FX rates) and CSV quirks are flagged, not dropped.
+        assertThat(fxRates.usdToCadOn(LocalDate.of(2026, 1, 2))).hasValueSatisfying(rate ->
+                assertThat(rate).isEqualByComparingTo("1.3738"));
+        assertThat(invoices.get("AP-00001").getTotalCad()).isEqualByComparingTo("2520.00");
+        assertThat(flags.findByInvoiceIdOrderById("AP-00026")).extracting(f -> f.getCode())
+                .contains("HISTORICAL_REPEAT_NUMBER");
+    }
+
+    @Test
+    @Order(5)
+    void theRepeatGuardRefusesTheSameVendorAndInvoiceNumberTwice() {
+        invoices.saveAndFlush(draftInvoice("T-1"));
+        assertThatThrownBy(() -> invoices.saveAndFlush(draftInvoice("T-2")))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    private static Invoice draftInvoice(String id) {
+        Invoice invoice = new Invoice();
+        invoice.setId(id);
+        invoice.setVendorId("V001");
+        invoice.setCanonicalInvoiceNumber("REPEAT1");
+        invoice.setStatus(InvoiceStatus.RECEIVED);
+        return invoice;
     }
 
     private void waitForStatus(String invoiceId, InvoiceStatus expected) {

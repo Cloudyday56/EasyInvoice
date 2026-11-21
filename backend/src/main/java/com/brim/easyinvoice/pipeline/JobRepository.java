@@ -1,67 +1,78 @@
 package com.brim.easyinvoice.pipeline;
 
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Repository;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.QueryHint;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.QueryHints;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 
-@Repository
-public class JobRepository {
+/** The pipeline's work queue, on plain JPA. */
+public interface JobRepository extends JpaRepository<Job, Long> {
 
-    private final JdbcTemplate jdbc;
-
-    public JobRepository(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
-    }
-
-    /** Queues a node run. Does nothing if the same run is already waiting (no double work). */
-    public void enqueue(String invoiceId, NodeName node, long delayMs) {
-        jdbc.update("""
-                INSERT INTO jobs (invoice_id, node, run_after)
-                SELECT ?, ?, now() + (? * interval '1 millisecond')
-                WHERE NOT EXISTS (SELECT 1 FROM jobs WHERE invoice_id = ? AND node = ? AND status = 'PENDING')
-                """, invoiceId, node.name(), delayMs, invoiceId, node.name());
-    }
+    boolean existsByInvoiceIdAndNodeAndStatus(String invoiceId, NodeName node, String status);
 
     /**
-     * Takes the next due job and marks it RUNNING in one statement.
-     * SKIP LOCKED means two runners would never grab the same job.
+     * The next due job, locked with SELECT ... FOR UPDATE SKIP LOCKED (lock timeout -2 means "skip locked"),
+     * so two runners would never grab the same job.
      */
-    public Optional<Job> claimNext() {
-        return jdbc.query("""
-                UPDATE jobs SET status = 'RUNNING', attempts = attempts + 1
-                WHERE id = (
-                    SELECT id FROM jobs
-                    WHERE status = 'PENDING' AND run_after <= now()
-                    ORDER BY run_after, id
-                    LIMIT 1
-                    FOR UPDATE SKIP LOCKED)
-                RETURNING id, invoice_id, node, attempts
-                """, (rs, i) -> new Job(rs.getLong("id"), rs.getString("invoice_id"),
-                NodeName.valueOf(rs.getString("node")), rs.getInt("attempts"))).stream().findFirst();
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "-2"))
+    Optional<Job> findFirstByStatusAndRunAfterLessThanEqualOrderByRunAfterAscIdAsc(String status, OffsetDateTime now);
+
+    List<Job> findByStatus(String status);
+
+    /** Queues a node run. Does nothing if the same run is already waiting (no double work). */
+    @Transactional
+    default void enqueue(String invoiceId, NodeName node, long delayMs) {
+        if (existsByInvoiceIdAndNodeAndStatus(invoiceId, node, "PENDING")) return;
+        Job job = new Job();
+        job.setInvoiceId(invoiceId);
+        job.setNode(node);
+        job.setRunAfter(OffsetDateTime.now().plusNanos(delayMs * 1_000_000));
+        save(job);
     }
 
-    public void markDone(long jobId) {
-        jdbc.update("UPDATE jobs SET status = 'DONE' WHERE id = ?", jobId);
+    /** Takes the next due job and marks it RUNNING. */
+    @Transactional
+    default Optional<Job> claimNext() {
+        Optional<Job> next = findFirstByStatusAndRunAfterLessThanEqualOrderByRunAfterAscIdAsc("PENDING", OffsetDateTime.now());
+        next.ifPresent(job -> {
+            job.setStatus("RUNNING");
+            job.setAttempts(job.getAttempts() + 1);
+        });
+        return next;
     }
 
-    public void retryLater(long jobId, String error, long delayMs) {
-        jdbc.update("UPDATE jobs SET status = 'PENDING', last_error = ?, run_after = now() + (? * interval '1 millisecond') "
-                + "WHERE id = ?", error, delayMs, jobId);
+    @Transactional
+    default void markDone(long jobId) {
+        findById(jobId).ifPresent(job -> job.setStatus("DONE"));
     }
 
-    public void markFailed(long jobId, String error) {
-        jdbc.update("UPDATE jobs SET status = 'FAILED', last_error = ? WHERE id = ?", error, jobId);
+    @Transactional
+    default void retryLater(long jobId, String error, long delayMs) {
+        findById(jobId).ifPresent(job -> {
+            job.setStatus("PENDING");
+            job.setLastError(error);
+            job.setRunAfter(OffsetDateTime.now().plusNanos(delayMs * 1_000_000));
+        });
+    }
+
+    @Transactional
+    default void markFailed(long jobId, String error) {
+        findById(jobId).ifPresent(job -> {
+            job.setStatus("FAILED");
+            job.setLastError(error);
+        });
     }
 
     /** After a restart, anything left RUNNING was interrupted; run it again. */
-    public void requeueInterrupted() {
-        jdbc.update("UPDATE jobs SET status = 'PENDING' WHERE status = 'RUNNING'");
-    }
-
-    public boolean hasPendingJob(String invoiceId, NodeName node) {
-        Integer n = jdbc.queryForObject("SELECT count(*) FROM jobs WHERE invoice_id = ? AND node = ? "
-                + "AND status IN ('PENDING','RUNNING')", Integer.class, invoiceId, node.name());
-        return n != null && n > 0;
+    @Transactional
+    default void requeueInterrupted() {
+        findByStatus("RUNNING").forEach(job -> job.setStatus("PENDING"));
     }
 }
