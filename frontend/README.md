@@ -83,8 +83,10 @@ nginx.conf                   SPA fallback + /api proxy to the backend service
 - **Document first:** the risk overview stays at the top, the invoice PDF preview renders
   directly underneath, and the raw email is one tab away under `Original email`.
 - **Activity without jargon:** open **Activity & audit trail** from the preview header or footer
-  to see a simple timeline: what happened, who did it, why, and which step it affected. Hashes,
-  event codes and JSON live under **Technical details**, so they never get in the way.
+  to see a simple timeline in chronological order: what happened, who did it, why, and which step
+  it affected. It defaults to **Key activity** and can switch to **All activity**; the header always
+  shows how many events are in view. Long histories include **Jump to latest**, and hashes, event
+  codes and JSON live under **Technical details**, so they never get in the way.
 
 ## Notes
 

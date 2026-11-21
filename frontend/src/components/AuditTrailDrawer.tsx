@@ -1,7 +1,10 @@
+import { useRef, useState } from 'react'
 import {
+  ArrowDown,
   Ban,
   Check,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Database,
   Download,
@@ -56,6 +59,16 @@ const ACTION_META: Record<string, ActionMeta> = {
   'invoices.cleared': { label: 'Invoices cleared', tone: 'neutral', icon: RotateCcw },
 }
 
+/** Routine automation stays in the record, but does not clutter the default story. */
+const ROUTINE_ACTIONS = new Set([
+  'node.PASS',
+  'node.WAIT',
+  'node.RETRY',
+  'status.changed',
+  'inbox.polled',
+  'seed.loaded',
+])
+
 const TONE_STYLES: Record<Tone, { dot: string; chip: string }> = {
   success: { dot: 'bg-emerald-500', chip: 'border-emerald-100 bg-emerald-50 text-emerald-700' },
   info: { dot: 'bg-sky-500', chip: 'border-sky-100 bg-sky-50 text-sky-700' },
@@ -79,6 +92,10 @@ const PAYLOAD_LABELS: Record<string, string> = {
   amount: 'Amount',
   currency: 'Currency',
   method: 'Method',
+  channel: 'Channel',
+  file: 'File',
+  sha256: 'File fingerprint',
+  fileFingerprint: 'File fingerprint',
   by: 'By',
   stepNo: 'Step',
   action: 'Action',
@@ -117,6 +134,10 @@ function formatValue(key: string, value: unknown): string {
       .join(' · ')
   }
   if (key === 'reasonCode') return auditPretty(String(value))
+  if (key === 'sha256' || key === 'fileFingerprint') {
+    const text = String(value)
+    return text.length > 16 ? `${text.slice(0, 16)}…` : text
+  }
   if (key === 'riskScore') return `${value}/100`
   if (key === 'queue') return auditHoldLabel(String(value))
   if (key === 'resumeNode') return auditNodeLabel(String(value))
@@ -179,9 +200,14 @@ export function AuditTrailDrawer({
   onClose,
   onExport,
 }: AuditTrailDrawerProps) {
+  const listRef = useRef<HTMLDivElement>(null)
+  const [showAll, setShowAll] = useState(false)
+
   if (!open) return null
 
-  const ordered = [...events].reverse() // backend returns oldest-first for an invoice
+  // App.tsx supplies events oldest-first for both invoice and global views.
+  const ordered = events
+  const visible = showAll ? ordered : ordered.filter((event) => !ROUTINE_ACTIONS.has(event.action))
 
   return (
     <div className="fixed inset-0 z-[72] flex justify-end" role="presentation">
@@ -236,20 +262,52 @@ export function AuditTrailDrawer({
             </div>
           )}
 
-          <div className="mt-4 flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10.5px] font-semibold text-slate-600">
-              <Link2 size={11} /> {events.length} events
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span
+              title="Read from top to bottom · oldest → newest"
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10.5px] font-semibold',
+                showAll
+                  ? 'border-slate-200 bg-slate-50 text-slate-600'
+                  : 'border-sky-100 bg-sky-50 text-sky-700',
+              )}
+            >
+              <Link2 size={11} /> {showAll ? 'All activity' : 'Key activity'} · {visible.length} of {events.length}
             </span>
-            <span className="text-[10.5px] text-slate-400">Newest first</span>
-            {onExport && (
-              <button type="button" onClick={onExport} className="action-secondary ml-auto !py-1.5 !text-[11px]">
-                <Download size={13} /> Download CSV
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAll((current) => !current)}
+                className="action-secondary !py-1.5 !text-[11px]"
+              >
+                {showAll ? 'Show key activity' : 'Show all activity'}
               </button>
-            )}
+              {visible.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
+                  }
+                  className="action-secondary !py-1.5 !text-[11px]"
+                >
+                  <ArrowDown size={13} /> Jump to latest
+                </button>
+              )}
+              {onExport && (
+                <button
+                  type="button"
+                  onClick={onExport}
+                  title="Downloads the complete log, including routine steps"
+                  className="action-secondary !py-1.5 !text-[11px]"
+                >
+                  <Download size={13} /> Download CSV
+                </button>
+              )}
+            </div>
           </div>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+        <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
           {loading ? (
             <p className="py-12 text-center text-[12px] text-slate-400">Loading activity…</p>
           ) : ordered.length === 0 ? (
@@ -258,31 +316,59 @@ export function AuditTrailDrawer({
               <p className="mt-3 text-[13px] font-bold text-slate-700">No activity recorded yet</p>
               <p className="mt-1 text-[11.5px] text-slate-400">Events appear here as the invoice moves through the pipeline.</p>
             </div>
+          ) : visible.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-12 text-center">
+              <History size={22} className="mx-auto text-slate-300" />
+              <p className="mt-3 text-[13px] font-bold text-slate-700">Only routine steps so far</p>
+              <p className="mt-1 text-[11.5px] text-slate-400">Nothing notable has happened yet in this view.</p>
+              <button
+                type="button"
+                onClick={() => setShowAll(true)}
+                className="action-secondary mx-auto mt-4 !py-1.5 !text-[11px]"
+              >
+                Show all activity
+              </button>
+            </div>
           ) : (
-            <ol className="relative space-y-2.5">
-              {ordered.map((event) => {
-                const meta = metaFor(event)
-                const style = TONE_STYLES[meta.tone]
-                const Icon = meta.icon
-                const rows = payloadRows(event)
-                const message = (() => {
-                  try {
-                    return event.payloadJson ? (JSON.parse(event.payloadJson) as { message?: string }).message ?? null : null
-                  } catch {
-                    return null
-                  }
-                })()
-                const transition = event.fromStatus && event.toStatus
-                  ? `${auditStatusLabel(event.fromStatus)} → ${auditStatusLabel(event.toStatus)}`
-                  : event.toStatus
-                    ? auditStatusLabel(event.toStatus)
-                    : null
+            <>
+              <p className="mb-3 flex items-center gap-2 pl-7 text-[10.5px] font-semibold text-slate-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
+                {showAll ? 'First recorded activity' : 'First key activity'}
+              </p>
+              <ol className="relative space-y-2.5">
+                {visible.map((event, index) => {
+                  const meta = metaFor(event)
+                  const style = TONE_STYLES[meta.tone]
+                  const Icon = meta.icon
+                  const rows = payloadRows(event)
+                  const message = (() => {
+                    try {
+                      return event.payloadJson ? (JSON.parse(event.payloadJson) as { message?: string }).message ?? null : null
+                    } catch {
+                      return null
+                    }
+                  })()
+                  const transition = event.fromStatus && event.toStatus
+                    ? `${auditStatusLabel(event.fromStatus)} → ${auditStatusLabel(event.toStatus)}`
+                    : event.toStatus
+                      ? auditStatusLabel(event.toStatus)
+                      : null
 
-                return (
-                  <li key={event.id} className="relative pl-7">
-                    <span className={cn('absolute left-[7px] top-4 h-2.5 w-2.5 rounded-full ring-4 ring-[#FAFAF8]', style.dot)} />
-                    <span className="absolute bottom-[-10px] left-[11px] top-6 w-px bg-slate-200" aria-hidden="true" />
-                    <article className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+                  return (
+                    <li key={event.id} className="relative pl-7">
+                      <span className={cn('absolute left-[7px] top-4 h-2.5 w-2.5 rounded-full ring-4 ring-[#FAFAF8]', style.dot)} />
+                      {index < visible.length - 1 && (
+                        <>
+                          <span className="absolute bottom-[-10px] left-[11px] top-6 w-px bg-slate-200" aria-hidden="true" />
+                          <ChevronDown
+                            size={10}
+                            strokeWidth={3}
+                            className="absolute bottom-[-13px] left-[7px] text-slate-300"
+                            aria-hidden="true"
+                          />
+                        </>
+                      )}
+                      <article className="min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
                       <div className="flex items-start gap-2.5">
                         <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border', style.chip)}>
                           <Icon size={14} strokeWidth={2.1} />
@@ -320,35 +406,47 @@ export function AuditTrailDrawer({
                         )}
                       </div>
 
-                      {message && <p className="mt-2.5 text-[11.5px] leading-relaxed text-slate-700">{message}</p>}
+                      {message && (
+                        <p className="mt-2.5 max-w-full break-words text-[11.5px] leading-relaxed text-slate-700 [overflow-wrap:anywhere]">
+                          {message}
+                        </p>
+                      )}
 
                       {rows.length > 0 && (
-                        <dl className="mt-2.5 grid grid-cols-[minmax(88px,auto)_1fr] gap-x-3 gap-y-1 border-t border-slate-100 pt-2.5">
+                        <dl className="mt-2.5 grid min-w-0 max-w-full grid-cols-[minmax(88px,auto)_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-slate-100 pt-2.5">
                           {rows.map((row) => (
                             <div key={row.label} className="contents">
-                              <dt className="text-[10.5px] font-semibold text-slate-400">{row.label}</dt>
-                              <dd className="break-words text-[10.5px] leading-relaxed text-slate-600">{row.value}</dd>
+                              <dt className="min-w-0 break-words text-[10.5px] font-semibold text-slate-400">{row.label}</dt>
+                              <dd className="min-w-0 break-all text-[10.5px] leading-relaxed text-slate-600 [overflow-wrap:anywhere]">
+                                {row.value}
+                              </dd>
                             </div>
                           ))}
                         </dl>
                       )}
 
-                      <details className="group mt-2.5 border-t border-slate-100 pt-2">
+                      <details className="group mt-2.5 min-w-0 border-t border-slate-100 pt-2">
                         <summary className="cursor-pointer list-none text-[10.5px] font-semibold text-slate-400 transition hover:text-slate-600">
                           Technical details
                         </summary>
-                        <div className="mt-2 rounded-lg bg-slate-50 p-2.5 font-mono text-[10px] leading-relaxed text-slate-500">
-                          <div>Event #{event.id} · {event.action}</div>
-                          <div className="truncate">Hash {event.hash?.slice(0, 20) ?? '—'}…</div>
-                          <div className="truncate">Previous {event.prevHash?.slice(0, 20) ?? '—'}…</div>
-                          {payloadText(event) && <pre className="mt-2 whitespace-pre-wrap break-all text-slate-500">{payloadText(event)}</pre>}
+                        <div className="mt-2 max-w-full overflow-hidden rounded-lg bg-slate-50 p-2.5 font-mono text-[10px] leading-relaxed text-slate-500">
+                          <div className="break-all">Event #{event.id} · {event.action}</div>
+                          <div className="break-all">Hash {event.hash ?? '—'}</div>
+                          <div className="break-all">Previous {event.prevHash ?? '—'}</div>
+                          {payloadText(event) && <pre className="mt-2 max-w-full whitespace-pre-wrap break-all text-slate-500">{payloadText(event)}</pre>}
                         </div>
                       </details>
                     </article>
                   </li>
                 )
-              })}
-            </ol>
+                })}
+              </ol>
+            </>
+          )}
+          {visible.length > 0 && (
+            <p className="mt-3 flex items-center gap-2 pl-7 text-[10.5px] font-semibold text-slate-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Latest activity
+            </p>
           )}
         </div>
       </aside>

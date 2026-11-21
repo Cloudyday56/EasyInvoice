@@ -75,13 +75,16 @@ Override them with environment variables, e.g. `APP_FRAUD_BLOCK_AT=80`.
 ### Activity & audit trail in the UI
 
 Every invoice has an **Activity & audit trail** button in the preview header and in the bottom
-action bar. It opens a newest-first timeline written for people, not developers:
+action bar. It opens a chronological timeline written for people, not developers:
 
 - friendly action labels ("Placed on hold", "Payment released", "Review flag added")
 - who acted, their role, and who they acted on behalf of
 - the step and status change, plus the human-readable reason or summary
 - structured facts such as risk score, reviewed signals and payment notes
 - raw event IDs, action codes, hashes and JSON tucked under **Technical details**
+- **Key activity / All activity** toggle: starts with a quiet, notable-events view and clearly
+  shows how many events are in view; **Download CSV** and integrity checks always use the full log
+- **Jump to latest** for long histories, while the story still starts at the beginning
 
 Admins also get **Records & tools** in the sidebar:
 
