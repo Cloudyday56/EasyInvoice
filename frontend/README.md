@@ -40,13 +40,6 @@ docker compose up --build
 Open <http://localhost:5173>. `nginx.conf` serves the static build and proxies `/api` to the `backend`
 compose service.
 
-To run only the frontend container against a backend already running on your host at
-<http://localhost:8080>:
-
-```bash
-docker compose -f frontend/docker-compose.yml up --build
-```
-
 That file mounts `nginx.host.conf`, which proxies `/api` to `host.docker.internal:8080`.
 
 ## Structure
