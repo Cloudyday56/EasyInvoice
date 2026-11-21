@@ -29,20 +29,17 @@ npm run preview  # serve the production build
 npm run lint     # TypeScript only
 ```
 
-## Docker (frontend only)
+## Docker
 
-The frontend can be built and served as a static production bundle through nginx:
+The whole app (db, backend, frontend) is started from the repo root:
 
 ```bash
-cd frontend
 docker compose up --build
 ```
 
-Open <http://localhost:5173>. Stop it with `docker compose down`.
-
-`nginx.conf` proxies `/api` to `http://host.docker.internal:8080`, so a Spring Boot backend
-running on the host is reachable from the container. If the backend runs in another container,
-point `proxy_pass` at that compose service name instead and place both services on a shared network.
+Open <http://localhost:5173>. `nginx.conf` serves the static build and proxies `/api` to the `backend`
+compose service. To run only the frontend container against a backend on your host, change `proxy_pass`
+to `http://host.docker.internal:8080/api/`.
 
 ## Structure
 
@@ -56,12 +53,13 @@ src/
     InvoiceDocument.tsx      paper-style invoice preview with payment details
     UploadModal.tsx          drag-and-drop invoice intake
     ui.tsx                   avatars, tags, status/flag/risk pills
-  data/invoices.ts           realistic Harborline AP inbox (CAD + USD, GST/HST/QST)
+  api/client.ts              typed fetch client for /api (sends X-User-Id)
+  api/adapt.ts               maps backend DTOs onto the UI's Invoice view model
+  components/ReasonModal.tsx written reason for approve / reject / return / resume
   types.ts                   invoice and filter types
   lib/filters.ts             queue labels
 Dockerfile                   multi-stage build (Node build → nginx serve)
-docker-compose.yml           frontend-only service on port 5173
-nginx.conf                   SPA fallback + /api proxy to the host backend
+nginx.conf                   SPA fallback + /api proxy to the backend service
 ```
 
 ## What the UI makes obvious
@@ -78,9 +76,11 @@ nginx.conf                   SPA fallback + /api proxy to the host backend
 
 ## Notes
 
-- The mock dataset mirrors the backend contract: invoice statuses, pipeline nodes (`N4`–`N10`),
-  risk scores, payment rails and exception reasons.
-- Everything is client-side for now. The next step is to replace `src/data/invoices.ts`
-  with API calls and wire the actions to the Spring Boot endpoints.
+- All data comes from the Spring Boot API. The list polls every 2.5 s and the selected invoice every
+  1.2 s while it is still moving, so the 10-node tracker fills in live.
+- The user switcher (bottom of the sidebar) is the demo login: it sets the `X-User-Id` header.
+  Buttons follow the backend's `allowedActions`, so role, limit and separation-of-duty rules come
+  from the server; refused actions show the server's reason in a red toast.
+- Admins get an **Audit & tools** section: poll inbox, verify chain, export log, test LLM, reset demo.
 - Responsive behaviour: inbox + preview from 1024px, a single-pane inbox with a slide-over menu
   and a back button on phones.

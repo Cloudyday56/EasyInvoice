@@ -1,7 +1,14 @@
 import {
   CheckCircle2,
+  ChevronsUpDown,
   CreditCard,
+  Download,
   Inbox,
+  Link2,
+  MailPlus,
+  RotateCcw,
+  Trash2,
+  Sparkles,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -13,6 +20,17 @@ import type { FilterId } from '../types'
 import { filterLabels } from '../lib/filters'
 import { cn } from '../lib/cn'
 import { Avatar } from './ui'
+import type { UserDto } from '../api/client'
+import { roleLabel, toPerson } from '../api/adapt'
+
+export interface AdminTools {
+  pollInbox: () => void
+  verifyChain: () => void
+  exportLog: () => void
+  resetDemo: () => void
+  clearInvoices: () => void
+  testLlm: () => void
+}
 
 type NavTone = 'neutral' | 'alert' | 'success'
 
@@ -34,7 +52,13 @@ interface SidebarProps {
   mobileOpen: boolean
   activeFilter: FilterId
   counts: Record<FilterId, number>
+  total: number
   attentionCount: number
+  backendDown: boolean
+  users: UserDto[]
+  currentUser: UserDto | null
+  onUserChange: (id: string) => void
+  adminTools: AdminTools | null
   onToggleCollapse: () => void
   onCloseMobile: () => void
   onFilterChange: (filter: FilterId) => void
@@ -46,7 +70,13 @@ export function Sidebar({
   mobileOpen,
   activeFilter,
   counts,
+  total,
   attentionCount,
+  backendDown,
+  users,
+  currentUser,
+  onUserChange,
+  adminTools,
   onToggleCollapse,
   onCloseMobile,
   onFilterChange,
@@ -249,6 +279,34 @@ export function Sidebar({
             })}
           </div>
 
+          {adminTools && !compact && (
+            <>
+              <p className="mt-6 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                Audit & tools
+              </p>
+              <div className="mt-2 space-y-0.5">
+                {[
+                  { label: 'Poll AP inbox', icon: MailPlus, onClick: adminTools.pollInbox },
+                  { label: 'Verify audit chain', icon: Link2, onClick: adminTools.verifyChain },
+                  { label: 'Export audit log', icon: Download, onClick: adminTools.exportLog },
+                  { label: 'Test LLM connection', icon: Sparkles, onClick: adminTools.testLlm },
+                  { label: 'Remove all invoices', icon: Trash2, onClick: adminTools.clearInvoices },
+                  { label: 'Reset demo', icon: RotateCcw, onClick: adminTools.resetDemo },
+                ].map(({ label, icon: Icon, onClick }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={onClick}
+                    className="group flex h-9 w-full items-center gap-3 rounded-xl px-3 text-[12.5px] font-medium text-slate-600 transition hover:bg-white hover:text-slate-900"
+                  >
+                    <Icon size={16} strokeWidth={1.9} className="shrink-0 text-slate-400 group-hover:text-slate-600" />
+                    <span className="flex-1 truncate text-left">{label}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
           {!compact ? (
             <div className="mt-6 rounded-2xl border border-sky-100 bg-sky-50/60 p-3">
               <div className="flex items-center gap-2">
@@ -281,39 +339,88 @@ export function Sidebar({
 
         {!compact && (
           <div className="px-3 pb-3">
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                </span>
-                <p className="text-[11px] font-bold text-emerald-800">Pipeline healthy</p>
+            {backendDown ? (
+              <div className="rounded-2xl border border-rose-100 bg-rose-50/70 p-3">
+                <div className="flex items-center gap-2">
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" />
+                  <p className="text-[11px] font-bold text-rose-800">Backend unreachable</p>
+                </div>
+                <p className="mt-1.5 text-[10.5px] leading-relaxed text-rose-700/80">
+                  Start the API on :8080 · retrying…
+                </p>
               </div>
-              <p className="mt-1.5 text-[10.5px] leading-relaxed text-emerald-700/80">
-                9 invoices this week · {attentionCount} need attention
-              </p>
-            </div>
+            ) : (
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                  </span>
+                  <p className="text-[11px] font-bold text-emerald-800">Pipeline connected</p>
+                </div>
+                <p className="mt-1.5 text-[10.5px] leading-relaxed text-emerald-700/80">
+                  {total} invoice{total === 1 ? '' : 's'} visible · {attentionCount} need attention
+                </p>
+              </div>
+            )}
           </div>
         )}
 
         <div className={cn('border-t border-slate-200/80 p-3', compact && 'px-2')}>
-          <div
+          <label
             className={cn(
-              'flex items-center gap-2.5 rounded-xl p-2 transition hover:bg-white',
+              'relative flex cursor-pointer items-center gap-2.5 rounded-xl p-2 transition hover:bg-white',
               compact && 'justify-center p-0',
             )}
+            title="Switch user (demo login)"
           >
             <div className="relative">
-              <Avatar initials="MC" className="bg-slate-800 text-white" size="md" />
-              <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#f7f9fc] bg-emerald-500" />
+              <Avatar
+                initials={currentUser ? toPerson(currentUser).initials : '?'}
+                className="bg-slate-800 text-white"
+                size="md"
+              />
+              <span
+                className={cn(
+                  'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#f7f9fc]',
+                  currentUser?.onLeave ? 'bg-amber-400' : currentUser?.active === false ? 'bg-slate-400' : 'bg-emerald-500',
+                )}
+              />
             </div>
             {!compact && (
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[12px] font-bold text-slate-800">Maya Chen</p>
-                <p className="truncate text-[10.5px] text-slate-400">AP Clerk · Admin</p>
+                <p className="truncate text-[12px] font-bold text-slate-800">
+                  {currentUser?.fullName ?? 'Pick a user'}
+                </p>
+                <p className="truncate text-[10.5px] text-slate-400">
+                  {currentUser ? roleLabel(currentUser) : 'Demo login'}
+                </p>
               </div>
             )}
-          </div>
+            {!compact && <ChevronsUpDown size={14} className="shrink-0 text-slate-400" />}
+            <select
+              aria-label="Acting as user"
+              value={currentUser?.id ?? ''}
+              onChange={(event) => onUserChange(event.target.value)}
+              className="absolute inset-0 cursor-pointer opacity-0"
+            >
+              {!currentUser && <option value="">Pick a user…</option>}
+              {(['ADMIN', 'APPROVER', 'EMPLOYEE'] as const).map((role) => (
+                <optgroup key={role} label={role === 'ADMIN' ? 'Admins' : role === 'APPROVER' ? 'Approvers' : 'Employees'}>
+                  {users
+                    .filter((u) => u.role === role)
+                    .map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.fullName}
+                        {u.title ? ` — ${u.title}` : ''}
+                        {u.onLeave ? ' (on leave)' : ''}
+                        {!u.active ? ' (inactive)' : ''}
+                      </option>
+                    ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
         </div>
       </aside>
     </>

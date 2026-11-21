@@ -12,6 +12,7 @@ interface InboxListProps {
   selectedId: string | null
   activeFilter: FilterId
   query: string
+  loading?: boolean
   onQueryChange: (query: string) => void
   onSelect: (id: string) => void
   onOpenSidebar: () => void
@@ -24,6 +25,7 @@ export function InboxList({
   selectedId,
   activeFilter,
   query,
+  loading = false,
   onQueryChange,
   onSelect,
   onOpenSidebar,
@@ -146,7 +148,12 @@ export function InboxList({
       </header>
 
       <div className="scrollbar-thin flex-1 overflow-y-auto px-3 pb-5 pt-3">
-        {invoices.length === 0 ? (
+        {invoices.length === 0 && loading ? (
+          <div className="flex h-full min-h-[320px] flex-col items-center justify-center px-6 text-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-sky-500" />
+            <p className="mt-4 text-[12px] font-semibold text-slate-500">Loading invoices…</p>
+          </div>
+        ) : invoices.length === 0 ? (
           <div className="flex h-full min-h-[320px] flex-col items-center justify-center px-6 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 text-slate-300 ring-1 ring-slate-100">
               <SearchX size={24} strokeWidth={1.7} />
@@ -189,7 +196,8 @@ function InvoiceCard({
   selected: boolean
   onSelect: () => void
 }) {
-  const needsAttention = invoice.status === 'Needs review' || invoice.status === 'On hold'
+  const needsAttention =
+    invoice.status === 'Needs review' || invoice.status === 'On hold' || invoice.status === 'Processing'
   const dotClass = invoice.flags.includes('fraud') ? 'bg-rose-500' : 'bg-sky-500'
   const priorityFlag = invoice.flags.includes('fraud')
     ? 'fraud'

@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: easyinvoice
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/easyinvoice}
+    username: ${DB_USER:easyinvoice}
+    password: ${DB_PASSWORD:easyinvoice}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update  # Hibernate creates and updates the tables from the entities
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+app:
+  data-dir: ${DATA_DIR:../data}          # the sample dataset (CSV, inbox, incoming_invoices)
+  storage-dir: ${STORAGE_DIR:./storage}  # uploaded documents, keyed by SHA-256
+  pipeline:
+    poll-ms: 500        # how often the runner checks the jobs table
+    step-delay-ms: 800  # pause between nodes so the demo can watch the invoice move
+    max-attempts: 3
+  bank:
+    settle-after-ms: 4000  # mock bank: SENT -> SETTLED after this delay
+  extractor: ${EXTRACTOR:llm}   # fake | llm
+  llm:
+    base-url: ${LLM_BASE_URL:https://openrouter.ai/api/v1}
+    api-key: ${OPENROUTER_API_KEY:}  # never hard-code; set it in the root .env file
+    model: ${LLM_MODEL:anthropic/claude-sonnet-4.5}

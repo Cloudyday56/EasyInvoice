@@ -83,6 +83,10 @@ export function FlagBadge({ flag }: { flag: InvoiceFlag }) {
 }
 
 const statusStyles: Record<InvoiceStatus, { className: string; dot: string }> = {
+  Processing: { className: 'border-slate-200 bg-slate-50 text-slate-600', dot: 'bg-slate-400 animate-pulse' },
+  Released: { className: 'border-teal-200 bg-teal-50 text-teal-700', dot: 'bg-teal-500 animate-pulse' },
+  Rejected: { className: 'border-slate-300 bg-slate-100 text-slate-600', dot: 'bg-slate-500' },
+  Ignored: { className: 'border-slate-200 bg-slate-50 text-slate-500', dot: 'bg-slate-300' },
   'Needs review': { className: 'border-amber-200 bg-amber-50 text-amber-700', dot: 'bg-amber-500' },
   'Pending approval': { className: 'border-sky-200 bg-sky-50 text-sky-700', dot: 'bg-sky-500' },
   Approved: {
