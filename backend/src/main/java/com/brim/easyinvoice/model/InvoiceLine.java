@@ -1,16 +1,35 @@
 package com.brim.easyinvoice.model;
 
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
 import java.math.BigDecimal;
 
-public record InvoiceLine(
-        int lineNo,
-        String description,
-        BigDecimal quantity,
-        BigDecimal unitPrice,
-        BigDecimal amount,
-        String glAccount,
-        String departmentId,
-        String gstHstCode,
-        String pstQstCode,
-        String lineType) {
+@Entity
+@Table(name = "invoice_lines")
+@Getter
+@Setter
+@NoArgsConstructor
+public class InvoiceLine {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String invoiceId;
+    private int lineNo;
+    private String description;
+    private BigDecimal quantity;
+    private BigDecimal unitPrice;
+    private BigDecimal amount;
+    private String glAccount;
+    private String departmentId;
+    private String gstHstCode;
+    private String pstQstCode;
+    private String lineType;
 }

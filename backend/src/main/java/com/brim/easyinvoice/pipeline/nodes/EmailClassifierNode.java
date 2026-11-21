@@ -29,18 +29,18 @@ public class EmailClassifierNode implements Node {
     @Override
     public StageResult run(Invoice invoice, NodeContext ctx) {
         SourceDocument doc = ctx.document();
-        if ("UPLOAD".equals(doc.channel())) {
+        if ("UPLOAD".equals(doc.getChannel())) {
             return StageResult.pass("Uploaded from the UI: classification skipped");
         }
         if (!doc.hasFile()) {
-            String text = (doc.subject() + " " + doc.body()).toLowerCase();
+            String text = (doc.getSubject() + " " + doc.getBody()).toLowerCase();
             boolean looksLikeInvoice = INVOICE_WORDS.stream().anyMatch(text::contains);
             if (looksLikeInvoice) {
                 // TODO: write the simulated auto-reply asking the vendor to resend.
                 return StageResult.block(HoldQueue.MISSING_DOCUMENT, "NO_ATTACHMENT",
-                        "Invoice email from " + doc.sender() + " has no attachment");
+                        "Invoice email from " + doc.getSender() + " has no attachment");
             }
-            return StageResult.ignore("NOT_INVOICE", "No attachment and no invoice keywords: \"" + doc.subject() + "\"");
+            return StageResult.ignore("NOT_INVOICE", "No attachment and no invoice keywords: \"" + doc.getSubject() + "\"");
         }
         // TODO: keyword rules, then a cheap LLM call for ambiguous mail -> invoice | credit_note | statement | not_invoice.
         // TODO: record the sender domain for the fraud lookalike check.

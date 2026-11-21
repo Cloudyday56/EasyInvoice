@@ -24,8 +24,8 @@ final class PipelineProgress {
         // The last "node.*" event for each node tells us where that node stands.
         Map<String, AuditEvent> lastByNode = new HashMap<>();
         for (AuditEvent e : events) {
-            if (e.node() != null && e.action().startsWith("node.")) {
-                lastByNode.put(e.node(), e);
+            if (e.getNode() != null && e.getAction().startsWith("node.")) {
+                lastByNode.put(e.getNode(), e);
             }
         }
 
@@ -35,9 +35,9 @@ final class PipelineProgress {
             String state;
             String message = null;
             if (last == null) {
-                state = node.name().equals(invoice.currentNode()) ? "running" : "pending";
+                state = node.name().equals(invoice.getCurrentNode()) ? "running" : "pending";
             } else {
-                state = switch (last.action()) {
+                state = switch (last.getAction()) {
                     case "node.PASS" -> "done";
                     case "node.FLAG" -> "flagged";
                     case "node.BLOCK" -> "blocked";
@@ -50,7 +50,7 @@ final class PipelineProgress {
             }
             // Payment release re-checks the bank without logging; show it as running once released.
             if (node == NodeName.PAYMENT_RELEASE && "waiting".equals(state)
-                    && invoice.status().name().equals("RELEASED")) {
+                    && invoice.getStatus().name().equals("RELEASED")) {
                 state = "running";
                 message = "Sent to bank, waiting for settlement";
             }
@@ -60,8 +60,8 @@ final class PipelineProgress {
     }
 
     private static String messageOf(AuditEvent event, ObjectMapper json) {
-        if (event.payloadJson() == null) return null;
-        Object message = json.readValue(event.payloadJson(), Map.class).get("message");
+        if (event.getPayloadJson() == null) return null;
+        Object message = json.readValue(event.getPayloadJson(), Map.class).get("message");
         return message == null ? null : message.toString();
     }
 }

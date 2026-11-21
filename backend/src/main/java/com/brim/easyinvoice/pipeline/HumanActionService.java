@@ -7,7 +7,9 @@ import com.brim.easyinvoice.model.Invoice;
 import com.brim.easyinvoice.model.InvoiceStatus;
 import com.brim.easyinvoice.model.Payment;
 import com.brim.easyinvoice.model.User;
+import com.brim.easyinvoice.model.Flag;
 import com.brim.easyinvoice.repo.ApprovalStepRepository;
+import com.brim.easyinvoice.repo.FlagRepository;
 import com.brim.easyinvoice.repo.InvoiceRepository;
 import com.brim.easyinvoice.repo.PaymentRepository;
 import com.brim.easyinvoice.security.Action;
@@ -17,6 +19,7 @@ import com.brim.easyinvoice.web.BadRequestException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -34,17 +37,19 @@ public class HumanActionService {
     private final InvoiceRepository invoices;
     private final ApprovalStepRepository steps;
     private final PaymentRepository payments;
+    private final FlagRepository flags;
     private final AuthorizationService authorization;
     private final InvoiceStateMachine stateMachine;
     private final AuditService audit;
     private final PipelineRunner runner;
 
     public HumanActionService(InvoiceRepository invoices, ApprovalStepRepository steps, PaymentRepository payments,
-                              AuthorizationService authorization, InvoiceStateMachine stateMachine,
+                              FlagRepository flags, AuthorizationService authorization, InvoiceStateMachine stateMachine,
                               AuditService audit, PipelineRunner runner) {
         this.invoices = invoices;
         this.steps = steps;
         this.payments = payments;
+        this.flags = flags;
         this.authorization = authorization;
         this.stateMachine = stateMachine;
         this.audit = audit;
@@ -58,10 +63,10 @@ public class HumanActionService {
         authorization.authorize(user, Action.APPROVE_INVOICE, invoice);
         ApprovalStep step = currentStep(invoice);
 
-        steps.recordDecision(step.id(), "APPROVED", user.id(), comment);
-        audit.record(Actor.of(user, step.actingFor()), invoice.id(), null, "approval.approved",
-                NodeName.APPROVAL_EXECUTION.name(), null, null, details("stepNo", step.stepNo(), "comment", comment));
-        runner.enqueue(invoice.id(), NodeName.APPROVAL_EXECUTION);
+        recordDecision(step, "APPROVED", user, comment);
+        audit.record(Actor.of(user, step.getActingFor()), invoice.getId(), null, "approval.approved",
+                NodeName.APPROVAL_EXECUTION.name(), null, null, details("stepNo", step.getStepNo(), "comment", comment));
+        runner.enqueue(invoice.getId(), NodeName.APPROVAL_EXECUTION);
     }
 
     public void reject(User user, String invoiceId, String reason) {
@@ -70,10 +75,10 @@ public class HumanActionService {
         authorization.authorize(user, Action.APPROVE_INVOICE, invoice);
         ApprovalStep step = currentStep(invoice);
 
-        steps.recordDecision(step.id(), "REJECTED", user.id(), reason);
-        audit.record(Actor.of(user, step.actingFor()), invoice.id(), null, "approval.rejected",
-                NodeName.APPROVAL_EXECUTION.name(), null, null, details("stepNo", step.stepNo(), "reason", reason));
-        stateMachine.reject(invoice, Actor.of(user, step.actingFor()), reason);
+        recordDecision(step, "REJECTED", user, reason);
+        audit.record(Actor.of(user, step.getActingFor()), invoice.getId(), null, "approval.rejected",
+                NodeName.APPROVAL_EXECUTION.name(), null, null, details("stepNo", step.getStepNo(), "reason", reason));
+        stateMachine.reject(invoice, Actor.of(user, step.getActingFor()), reason);
     }
 
     /** "Return to AP": back to the Validation failed queue; existing approvals are voided. */
@@ -83,11 +88,11 @@ public class HumanActionService {
         authorization.authorize(user, Action.APPROVE_INVOICE, invoice);
         ApprovalStep step = currentStep(invoice);
 
-        steps.recordDecision(step.id(), "RETURNED", user.id(), reason);
-        steps.voidAll(invoice.id());
-        Actor actor = Actor.of(user, step.actingFor());
-        audit.record(actor, invoice.id(), null, "approval.returned", NodeName.APPROVAL_EXECUTION.name(),
-                null, null, details("stepNo", step.stepNo(), "reason", reason));
+        recordDecision(step, "RETURNED", user, reason);
+        voidOpenSteps(invoice.getId());
+        Actor actor = Actor.of(user, step.getActingFor());
+        audit.record(actor, invoice.getId(), null, "approval.returned", NodeName.APPROVAL_EXECUTION.name(),
+                null, null, details("stepNo", step.getStepNo(), "reason", reason));
         stateMachine.hold(invoice, HoldQueue.VALIDATION_FAILED, "RETURNED_BY_APPROVER", reason, actor,
                 NodeName.APPROVAL_EXECUTION.name());
     }
@@ -100,9 +105,13 @@ public class HumanActionService {
         Invoice invoice = invoices.get(invoiceId);
         authorization.authorize(user, Action.RESOLVE_HOLD, invoice);
 
-        invoices.overrideBlockFlags(invoice.id(), user.id(), reason);
+        // The blocking flags stay visible, marked as overridden with the Admin's written reason.
+        for (Flag flag : flags.findByInvoiceIdAndSeverityAndOverriddenByIsNull(invoice.getId(), "BLOCK")) {
+            flag.setOverriddenBy(user.getId());
+            flag.setOverrideReason(reason);
+        }
         NodeName resumeAt = stateMachine.releaseHold(invoice, Actor.of(user), reason);
-        runner.enqueue(invoice.id(), resumeAt);
+        runner.enqueue(invoice.getId(), resumeAt);
     }
 
     public void rejectFromHold(User user, String invoiceId, String reason) {
@@ -116,25 +125,42 @@ public class HumanActionService {
 
     public void release(User user, String paymentId) {
         Payment payment = payments.get(paymentId);
-        Invoice invoice = invoices.get(payment.invoiceId());
+        Invoice invoice = invoices.get(payment.getInvoiceId());
         authorization.authorize(user, Action.RELEASE_PAYMENT, invoice);
-        if (!"SCHEDULED".equals(payment.status())) {
-            throw new BadRequestException("Payment " + paymentId + " is " + payment.status() + ", not SCHEDULED");
+        if (!"SCHEDULED".equals(payment.getStatus())) {
+            throw new BadRequestException("Payment " + paymentId + " is " + payment.getStatus() + ", not SCHEDULED");
         }
 
-        payments.markReleased(payment.id(), user.id());
-        audit.record(Actor.of(user), invoice.id(), payment.id(), "payment.released",
+        payment.setStatus("RELEASED");
+        payment.setReleasedBy(user.getId());
+        payment.setReleasedAt(OffsetDateTime.now());
+        audit.record(Actor.of(user), invoice.getId(), payment.getId(), "payment.released",
                 NodeName.PAYMENT_RELEASE.name(), null, null,
-                details("amount", payment.amount(), "currency", payment.currency(), "method", payment.method()));
+                details("amount", payment.getAmount(), "currency", payment.getCurrency(), "method", payment.getMethod()));
         stateMachine.moveTo(invoice, InvoiceStatus.RELEASED, Actor.of(user), NodeName.PAYMENT_RELEASE.name(), null);
-        runner.enqueue(invoice.id(), NodeName.PAYMENT_RELEASE);
+        runner.enqueue(invoice.getId(), NodeName.PAYMENT_RELEASE);
     }
 
     // ---------- helpers ----------
 
     private ApprovalStep currentStep(Invoice invoice) {
-        return AuthorizationService.currentStep(steps.forInvoice(invoice.id()))
+        return AuthorizationService.currentStep(steps.forInvoice(invoice.getId()))
                 .orElseThrow(() -> new BadRequestException("No open approval step"));
+    }
+
+    /** The step is a managed entity, so these changes are saved when the transaction commits. */
+    private static void recordDecision(ApprovalStep step, String status, User user, String comment) {
+        step.setStatus(status);
+        step.setActedBy(user.getId());
+        step.setActedAt(OffsetDateTime.now());
+        step.setComment(comment);
+    }
+
+    /** Existing approvals no longer count once the invoice goes back to AP. */
+    private void voidOpenSteps(String invoiceId) {
+        for (ApprovalStep step : steps.forInvoice(invoiceId)) {
+            if (step.isPending() || step.isApproved()) step.setStatus("VOID");
+        }
     }
 
     private static void requireReason(String reason) {

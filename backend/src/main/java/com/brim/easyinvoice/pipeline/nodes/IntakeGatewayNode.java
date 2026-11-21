@@ -43,17 +43,17 @@ public class IntakeGatewayNode implements Node {
         if (!doc.hasFile()) {
             return StageResult.pass("Email received without an attachment; the classifier decides what it is");
         }
-        if (!storage.exists(doc.storagePath())) {
-            return StageResult.block(HoldQueue.INTAKE_ERRORS, "FILE_MISSING", "Stored file not found: " + doc.fileName());
+        if (!storage.exists(doc.getStoragePath())) {
+            return StageResult.block(HoldQueue.INTAKE_ERRORS, "FILE_MISSING", "Stored file not found: " + doc.getFileName());
         }
-        if (!ALLOWED_TYPES.contains(doc.contentType())) {
+        if (!ALLOWED_TYPES.contains(doc.getContentType())) {
             return StageResult.block(HoldQueue.INTAKE_ERRORS, "UNSUPPORTED_TYPE",
-                    "Unsupported file type " + doc.contentType() + " (PDF, PNG or JPEG only)");
+                    "Unsupported file type " + doc.getContentType() + " (PDF, PNG or JPEG only)");
         }
-        if (storage.size(doc.storagePath()) > MAX_BYTES) {
+        if (storage.size(doc.getStoragePath()) > MAX_BYTES) {
             return StageResult.block(HoldQueue.INTAKE_ERRORS, "TOO_LARGE", "File is over 10 MB");
         }
         // TODO: detect corrupt files (try to open the PDF / decode the image).
-        return StageResult.pass("Stored " + doc.fileName() + " (sha256 " + doc.sha256().substring(0, 12) + "…)");
+        return StageResult.pass("Stored " + doc.getFileName() + " (sha256 " + doc.getSha256().substring(0, 12) + "…)");
     }
 }

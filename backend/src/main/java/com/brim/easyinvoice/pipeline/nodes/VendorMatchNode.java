@@ -44,43 +44,43 @@ public class VendorMatchNode implements Node {
     @Override
     public StageResult run(Invoice invoice, NodeContext ctx) {
         // TODO: match by GST/BN number first, then legal name, then fuzzy name (trigram) + sender domain.
-        Optional<Vendor> match = invoice.vendorNameRaw() == null
+        Optional<Vendor> match = invoice.getVendorNameRaw() == null
                 ? Optional.empty()
-                : vendors.findByLegalNameIgnoreCase(invoice.vendorNameRaw());
+                : vendors.findFirstByLegalNameIgnoreCase(invoice.getVendorNameRaw());
         if (match.isEmpty()) {
             return StageResult.block(HoldQueue.VENDOR_HOLD, "NO_VENDOR_MATCH",
-                    "No vendor named \"" + invoice.vendorNameRaw() + "\"");
+                    "No vendor named \"" + invoice.getVendorNameRaw() + "\"");
         }
         Vendor vendor = match.get();
         if (!vendor.isActive()) {
             return StageResult.block(HoldQueue.VENDOR_HOLD, "VENDOR_NOT_ACTIVE",
-                    vendor.legalName() + " is " + vendor.status());
+                    vendor.getLegalName() + " is " + vendor.getStatus());
         }
 
         // The DB has a UNIQUE (vendor_id, canonical_invoice_number) constraint. We check first so the
         // invoice is parked with a clear reason instead of failing on the constraint.
-        String canonical = InvoiceNumbers.canonical(invoice.vendorInvoiceNumber());
-        if (invoices.numberAlreadyUsed(vendor.id(), canonical, invoice.id())) {
+        String canonical = InvoiceNumbers.canonical(invoice.getVendorInvoiceNumber());
+        if (invoices.existsByVendorIdAndCanonicalInvoiceNumberAndIdNot(vendor.getId(), canonical, invoice.getId())) {
             return StageResult.block(HoldQueue.VALIDATION_FAILED, "REPEAT_INVOICE_NUMBER",
-                    vendor.legalName() + " already billed invoice number " + invoice.vendorInvoiceNumber());
+                    vendor.getLegalName() + " already billed invoice number " + invoice.getVendorInvoiceNumber());
         }
 
         BigDecimal rate = BigDecimal.ONE;
-        if ("USD".equals(invoice.currency())) {
-            Optional<BigDecimal> usd = fxRates.usdToCadOn(invoice.invoiceDate());
+        if ("USD".equals(invoice.getCurrency())) {
+            Optional<BigDecimal> usd = fxRates.usdToCadOn(invoice.getInvoiceDate());
             if (usd.isEmpty()) {
                 return StageResult.block(HoldQueue.VALIDATION_FAILED, "NO_FX_RATE",
-                        "No USD/CAD rate on or before " + invoice.invoiceDate());
+                        "No USD/CAD rate on or before " + invoice.getInvoiceDate());
             }
             rate = usd.get();
         }
 
         Map<String, Object> patch = new HashMap<>();
-        patch.put("vendor_id", vendor.id());
-        patch.put("canonical_invoice_number", canonical);
-        patch.put("fx_rate_to_cad", rate);
-        patch.put("total_cad", invoice.total().multiply(rate).setScale(2, RoundingMode.HALF_UP));
+        patch.put("vendorId", vendor.getId());
+        patch.put("canonicalInvoiceNumber", canonical);
+        patch.put("fxRateToCad", rate);
+        patch.put("totalCad", invoice.getTotal().multiply(rate).setScale(2, RoundingMode.HALF_UP));
         // TODO: date sanity (future / over a year old), credit notes negative, default GL coding from vendor.
-        return StageResult.pass("Matched " + vendor.legalName() + " (" + vendor.id() + ")", patch);
+        return StageResult.pass("Matched " + vendor.getLegalName() + " (" + vendor.getId() + ")", patch);
     }
 }

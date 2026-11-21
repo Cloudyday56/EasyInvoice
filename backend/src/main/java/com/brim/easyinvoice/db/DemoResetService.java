@@ -55,7 +55,7 @@ public class DemoResetService {
             jdbc.execute("ALTER SEQUENCE new_invoice_seq RESTART");
             jdbc.execute("ALTER SEQUENCE new_payment_seq RESTART");
             audit.record(Actor.of(user), null, null, "demo.reset", null, null, null,
-                    Map.of("by", user.fullName()));
+                    Map.of("by", user.getFullName()));
             seedLoader.seedAll();
         }));
         bank.clear();

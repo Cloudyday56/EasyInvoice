@@ -29,10 +29,10 @@ public final class AuditHasher {
     public static String canonicalRow(AuditEvent e) {
         StringBuilder sb = new StringBuilder();
         for (String field : List.of(
-                nullToEmpty(e.invoiceId()), nullToEmpty(e.paymentId()), nullToEmpty(e.actorId()),
-                nullToEmpty(e.actingFor()), nullToEmpty(e.role()), nullToEmpty(e.action()), nullToEmpty(e.node()),
-                nullToEmpty(e.fromStatus()), nullToEmpty(e.toStatus()), nullToEmpty(e.payloadJson()),
-                e.createdAt().toString())) {
+                nullToEmpty(e.getInvoiceId()), nullToEmpty(e.getPaymentId()), nullToEmpty(e.getActorId()),
+                nullToEmpty(e.getActingFor()), nullToEmpty(e.getRole()), nullToEmpty(e.getAction()), nullToEmpty(e.getNode()),
+                nullToEmpty(e.getFromStatus()), nullToEmpty(e.getToStatus()), nullToEmpty(e.getPayloadJson()),
+                e.getCreatedAt().toString())) {
             sb.append(field.length()).append(':').append(field).append('|');
         }
         return sb.toString();
@@ -46,13 +46,13 @@ public final class AuditHasher {
     public static VerifyResult verify(List<AuditEvent> eventsInOrder) {
         String expectedPrev = GENESIS;
         for (AuditEvent e : eventsInOrder) {
-            if (!e.prevHash().equals(expectedPrev)) {
-                return VerifyResult.broken(eventsInOrder.size(), e.id(), "prev_hash does not match the previous row (row missing or reordered)");
+            if (!e.getPrevHash().equals(expectedPrev)) {
+                return VerifyResult.broken(eventsInOrder.size(), e.getId(), "prev_hash does not match the previous row (row missing or reordered)");
             }
-            if (!hash(e.prevHash(), e).equals(e.hash())) {
-                return VerifyResult.broken(eventsInOrder.size(), e.id(), "hash does not match the row contents (row was edited)");
+            if (!hash(e.getPrevHash(), e).equals(e.getHash())) {
+                return VerifyResult.broken(eventsInOrder.size(), e.getId(), "hash does not match the row contents (row was edited)");
             }
-            expectedPrev = e.hash();
+            expectedPrev = e.getHash();
         }
         return VerifyResult.ok(eventsInOrder.size());
     }

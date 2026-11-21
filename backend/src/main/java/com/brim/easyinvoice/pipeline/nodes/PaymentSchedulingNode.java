@@ -41,24 +41,34 @@ public class PaymentSchedulingNode implements Node {
 
     @Override
     public StageResult run(Invoice invoice, NodeContext ctx) {
-        Optional<Payment> existing = payments.activeForInvoice(invoice.id());
+        Optional<Payment> existing = payments.activeForInvoice(invoice.getId());
         if (existing.isPresent()) {
-            return StageResult.pass("Payment " + existing.get().id() + " already scheduled"); // idempotent
+            return StageResult.pass("Payment " + existing.get().getId() + " already scheduled"); // idempotent
         }
 
-        Vendor vendor = vendors.findById(invoice.vendorId()).orElse(null);
+        Vendor vendor = invoice.getVendorId() == null ? null : vendors.findById(invoice.getVendorId()).orElse(null);
         if (vendor == null || !vendor.isActive()) {
             return StageResult.block(HoldQueue.PAYMENT_EXCEPTIONS, "VENDOR_NOT_ACTIVE",
                     "Vendor is no longer active; payment not scheduled");
         }
 
-        String method = vendor.acceptsCardPayment() ? "CARD" : "EFT";
-        int terms = vendor.paymentTermsDays() == null ? 30 : vendor.paymentTermsDays();
-        LocalDate payDate = invoice.dueDate() != null ? invoice.dueDate() : LocalDate.now().plusDays(terms);
+        String method = vendor.isAcceptsCardPayment() ? "CARD" : "EFT";
+        int terms = vendor.getPaymentTermsDays() == null ? 30 : vendor.getPaymentTermsDays();
+        LocalDate payDate = invoice.getDueDate() != null ? invoice.getDueDate() : LocalDate.now().plusDays(terms);
 
-        String paymentId = payments.nextPaymentId();
-        payments.insertScheduled(paymentId, invoice.id(), vendor.id(), method, payDate,
-                invoice.currency(), invoice.total(), invoice.totalCad());
-        return StageResult.pass("Scheduled " + method + " payment " + paymentId + " for " + payDate);
+        Payment payment = new Payment();
+        payment.setId(String.format("EP-%05d", payments.nextPaymentNumber()));
+        payment.setIdempotencyKey(payment.getId());
+        payment.setInvoiceId(invoice.getId());
+        payment.setVendorId(vendor.getId());
+        payment.setMethod(method);
+        payment.setScheduledDate(payDate);
+        payment.setCurrency(invoice.getCurrency());
+        payment.setAmount(invoice.getTotal());
+        payment.setAmountCad(invoice.getTotalCad());
+        payment.setStatus("SCHEDULED");
+        payment.setPreparedBy("system");
+        payments.save(payment);
+        return StageResult.pass("Scheduled " + method + " payment " + payment.getId() + " for " + payDate);
     }
 }

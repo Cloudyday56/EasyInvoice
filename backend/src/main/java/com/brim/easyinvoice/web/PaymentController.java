@@ -55,17 +55,17 @@ public class PaymentController {
         authorization.authorize(user, Action.VIEW_ADMIN_SCREENS, null);
 
         Map<String, Invoice> invoicesById = invoices.findAll().stream()
-                .collect(Collectors.toMap(Invoice::id, Function.identity()));
+                .collect(Collectors.toMap(Invoice::getId, Function.identity()));
         Map<String, List<ApprovalStep>> stepsByInvoice = steps.allGroupedByInvoice();
 
-        return payments.findAll().stream().map(p -> {
-            Invoice invoice = invoicesById.get(p.invoiceId());
-            boolean releasable = "SCHEDULED".equals(p.status());
+        return payments.findAllNewestFirst().stream().map(p -> {
+            Invoice invoice = invoicesById.get(p.getInvoiceId());
+            boolean releasable = "SCHEDULED".equals(p.getStatus());
             Decision d = releasable
                     ? AuthorizationService.decide(user, Action.RELEASE_PAYMENT, invoice,
-                    stepsByInvoice.getOrDefault(p.invoiceId(), List.of()))
-                    : Decision.deny("Payment is " + p.status());
-            return new PaymentRow(p, invoice.status().name(), d.allowed(), d.reason());
+                    stepsByInvoice.getOrDefault(p.getInvoiceId(), List.of()))
+                    : Decision.deny("Payment is " + p.getStatus());
+            return new PaymentRow(p, invoice.getStatus().name(), d.allowed(), d.reason());
         }).toList();
     }
 

@@ -21,14 +21,14 @@ class AuditHashChainTest {
 
     @Test
     void firstRowChainsFromGenesis() {
-        assertThat(buildChain(1).getFirst().prevHash()).isEqualTo(AuditHasher.GENESIS);
+        assertThat(buildChain(1).getFirst().getPrevHash()).isEqualTo(AuditHasher.GENESIS);
     }
 
     @Test
     void eachRowPointsAtThePreviousHash() {
         List<AuditEvent> chain = buildChain(3);
-        assertThat(chain.get(1).prevHash()).isEqualTo(chain.get(0).hash());
-        assertThat(chain.get(2).prevHash()).isEqualTo(chain.get(1).hash());
+        assertThat(chain.get(1).getPrevHash()).isEqualTo(chain.get(0).getHash());
+        assertThat(chain.get(2).getPrevHash()).isEqualTo(chain.get(1).getHash());
     }
 
     @Test
@@ -39,7 +39,7 @@ class AuditHashChainTest {
 
         AuditHasher.VerifyResult result = AuditHasher.verify(chain);
         assertThat(result.valid()).isFalse();
-        assertThat(result.brokenAtId()).isEqualTo(original.id());
+        assertThat(result.brokenAtId()).isEqualTo(original.getId());
         assertThat(result.problem()).contains("edited");
     }
 
@@ -47,12 +47,12 @@ class AuditHashChainTest {
     void editingARowAndRecomputingItsHashBreaksTheNextRow() {
         List<AuditEvent> chain = new ArrayList<>(buildChain(5));
         AuditEvent edited = withPayload(chain.get(2), "{\"amount\":999999}");
-        String newHash = AuditHasher.hash(edited.prevHash(), edited);
+        String newHash = AuditHasher.hash(edited.getPrevHash(), edited);
         chain.set(2, withHash(edited, newHash)); // a smarter attacker fixes the row's own hash...
 
         AuditHasher.VerifyResult result = AuditHasher.verify(chain);
         assertThat(result.valid()).isFalse();
-        assertThat(result.brokenAtId()).isEqualTo(chain.get(3).id()); // ...but row 4 still points at the old hash
+        assertThat(result.brokenAtId()).isEqualTo(chain.get(3).getId()); // ...but row 4 still points at the old hash
     }
 
     @Test
@@ -62,7 +62,7 @@ class AuditHashChainTest {
 
         AuditHasher.VerifyResult result = AuditHasher.verify(chain);
         assertThat(result.valid()).isFalse();
-        assertThat(result.brokenAtId()).isEqualTo(removed.id() + 1);
+        assertThat(result.brokenAtId()).isEqualTo(removed.getId() + 1);
         assertThat(result.problem()).contains("prev_hash");
     }
 
@@ -76,10 +76,10 @@ class AuditHashChainTest {
     @Test
     void movingTextBetweenFieldsChangesTheHash() {
         // Without length prefixes, ("ab" + "c") and ("a" + "bc") would hash the same.
-        AuditEvent a = new AuditEvent(1L, "ab", "c", "U1", null, "ADMIN", "x", null, null, null, null,
-                Instant.parse("2026-11-21T10:00:00Z"), AuditHasher.GENESIS, null);
-        AuditEvent b = new AuditEvent(1L, "a", "bc", "U1", null, "ADMIN", "x", null, null, null, null,
-                Instant.parse("2026-11-21T10:00:00Z"), AuditHasher.GENESIS, null);
+        AuditEvent a = AuditEvent.builder().id(1L).invoiceId("ab").paymentId("c").actorId("U1").role("ADMIN")
+                .action("x").createdAt(Instant.parse("2026-11-21T10:00:00Z")).prevHash(AuditHasher.GENESIS).build();
+        AuditEvent b = AuditEvent.builder().id(1L).invoiceId("a").paymentId("bc").actorId("U1").role("ADMIN")
+                .action("x").createdAt(Instant.parse("2026-11-21T10:00:00Z")).prevHash(AuditHasher.GENESIS).build();
         assertThat(AuditHasher.hash(AuditHasher.GENESIS, a)).isNotEqualTo(AuditHasher.hash(AuditHasher.GENESIS, b));
     }
 
@@ -98,23 +98,22 @@ class AuditHashChainTest {
             AuditEvent draft = event(id, "status.changed", "{\"n\":" + id + "}", prev);
             AuditEvent stored = withHash(draft, AuditHasher.hash(prev, draft));
             chain.add(stored);
-            prev = stored.hash();
+            prev = stored.getHash();
         }
         return chain;
     }
 
     private static AuditEvent event(long id, String action, String payload, String prevHash) {
-        return new AuditEvent(id, "EI-00001", null, "system", null, "SYSTEM", action, "EXTRACTION", "RECEIVED",
-                "EXTRACTED", payload, Instant.parse("2026-11-21T10:00:00Z").plusSeconds(id), prevHash, null);
+        return AuditEvent.builder().id(id).invoiceId("EI-00001").actorId("system").role("SYSTEM").action(action)
+                .node("EXTRACTION").fromStatus("RECEIVED").toStatus("EXTRACTED").payloadJson(payload)
+                .createdAt(Instant.parse("2026-11-21T10:00:00Z").plusSeconds(id)).prevHash(prevHash).build();
     }
 
     private static AuditEvent withPayload(AuditEvent e, String payload) {
-        return new AuditEvent(e.id(), e.invoiceId(), e.paymentId(), e.actorId(), e.actingFor(), e.role(), e.action(),
-                e.node(), e.fromStatus(), e.toStatus(), payload, e.createdAt(), e.prevHash(), e.hash());
+        return e.toBuilder().payloadJson(payload).build();
     }
 
     private static AuditEvent withHash(AuditEvent e, String hash) {
-        return new AuditEvent(e.id(), e.invoiceId(), e.paymentId(), e.actorId(), e.actingFor(), e.role(), e.action(),
-                e.node(), e.fromStatus(), e.toStatus(), e.payloadJson(), e.createdAt(), e.prevHash(), hash);
+        return e.toBuilder().hash(hash).build();
     }
 }

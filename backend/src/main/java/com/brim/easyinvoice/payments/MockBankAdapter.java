@@ -30,8 +30,8 @@ public class MockBankAdapter implements BankAdapter {
 
     @Override
     public String send(Payment payment) {
-        Submission submission = submissions.computeIfAbsent(payment.id(), id -> new Submission(
-                (payment.method().equals("CARD") ? "BRIM-VC-" : "BRIM-EFT-") + Math.abs(id.hashCode()),
+        Submission submission = submissions.computeIfAbsent(payment.getId(), id -> new Submission(
+                (payment.getMethod().equals("CARD") ? "BRIM-VC-" : "BRIM-EFT-") + Math.abs(id.hashCode()),
                 Instant.now()));
         return submission.reference();
     }

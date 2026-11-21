@@ -1,38 +1,60 @@
 package com.brim.easyinvoice.model;
 
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 
-public record Invoice(
-        String id,
-        Long sourceDocumentId,
-        String documentType,
-        String vendorId,
-        String vendorNameRaw,
-        String vendorInvoiceNumber,
-        String canonicalInvoiceNumber,
-        LocalDate invoiceDate,
-        LocalDate receivedDate,
-        LocalDate dueDate,
-        String currency,
-        BigDecimal subtotal,
-        BigDecimal gstHstAmount,
-        BigDecimal pstQstAmount,
-        BigDecimal total,
-        BigDecimal fxRateToCad,
-        BigDecimal totalCad,
-        String departmentId,
-        String requesterUserId,
-        String poId,
-        String contractId,
-        String shipToProvince,
-        Integer riskScore,
-        InvoiceStatus status,
-        String holdQueue,
-        String holdReason,
-        String resumeNode,
-        String currentNode,
-        OffsetDateTime createdAt,
-        OffsetDateTime updatedAt) {
+/** The invoice is a state machine: only InvoiceStateMachine changes status and the hold fields. */
+@Entity
+@Table(name = "invoices")
+@Getter
+@Setter
+@NoArgsConstructor
+public class Invoice {
+
+    @Id
+    private String id;
+    private Long sourceDocumentId;
+    private String documentType = "INVOICE";   // INVOICE | CREDIT_NOTE
+    private String vendorId;
+    private String vendorNameRaw;              // vendor name as read from the document
+    private String vendorInvoiceNumber;
+    private String canonicalInvoiceNumber;     // upper-case, no spaces/dashes/leading zeros
+    private LocalDate invoiceDate;
+    private LocalDate receivedDate;
+    private LocalDate dueDate;
+    private String currency;
+    private BigDecimal subtotal;
+    private BigDecimal gstHstAmount;
+    private BigDecimal pstQstAmount;
+    private BigDecimal total;
+    private BigDecimal fxRateToCad;
+    private BigDecimal totalCad;
+    private String departmentId;
+    private String requesterUserId;
+    private String poId;
+    private String contractId;
+    private String shipToProvince;
+    private Integer riskScore;
+    @Enumerated(EnumType.STRING)
+    private InvoiceStatus status;
+    private String holdQueue;                  // set when status = ON_HOLD
+    private String holdReason;
+    private String resumeNode;                 // node the invoice re-enters at once the hold is cleared
+    private String currentNode;                // last node that ran
+    @CreationTimestamp
+    private OffsetDateTime createdAt;
+    @UpdateTimestamp
+    private OffsetDateTime updatedAt;
 }

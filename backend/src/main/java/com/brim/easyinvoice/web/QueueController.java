@@ -39,11 +39,11 @@ public class QueueController {
         List<Invoice> onHold = invoices.findOnHold(); // already sorted by due date
         List<QueueView> views = new ArrayList<>();
         for (HoldQueue queue : HoldQueue.values()) {
-            List<Invoice> items = onHold.stream().filter(i -> queue.name().equals(i.holdQueue())).toList();
+            List<Invoice> items = onHold.stream().filter(i -> queue.name().equals(i.getHoldQueue())).toList();
             views.add(new QueueView(queue.name(), queue.label(), queue.resumeNode().name(), items));
         }
         // Not a hold queue, but the design wants ignored mail visible so a misclassification can be rescued.
-        List<Invoice> ignored = invoices.findAll().stream().filter(i -> i.status() == InvoiceStatus.IGNORED).toList();
+        List<Invoice> ignored = invoices.findByStatus(InvoiceStatus.IGNORED);
         views.add(new QueueView("IGNORED", "Ignored mail", null, ignored));
         return views;
     }

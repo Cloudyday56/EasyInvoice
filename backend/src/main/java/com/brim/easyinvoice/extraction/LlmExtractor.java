@@ -80,9 +80,9 @@ public class LlmExtractor implements Extractor {
 
     private static Map<String, Object> filePart(SourceDocument document, byte[] bytes) {
         String base64 = Base64.getEncoder().encodeToString(bytes);
-        String dataUrl = "data:" + document.contentType() + ";base64," + base64;
-        if ("application/pdf".equals(document.contentType())) {
-            return Map.of("type", "file", "file", Map.of("filename", document.fileName(), "file_data", dataUrl));
+        String dataUrl = "data:" + document.getContentType() + ";base64," + base64;
+        if ("application/pdf".equals(document.getContentType())) {
+            return Map.of("type", "file", "file", Map.of("filename", document.getFileName(), "file_data", dataUrl));
         }
         return Map.of("type", "image_url", "image_url", Map.of("url", dataUrl));
     }

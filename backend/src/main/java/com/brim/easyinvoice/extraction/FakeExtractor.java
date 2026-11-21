@@ -32,7 +32,7 @@ public class FakeExtractor implements Extractor {
 
     @Override
     public ExtractedInvoice extract(SourceDocument document, byte[] fileBytes) {
-        long seed = Long.parseUnsignedLong(document.sha256().substring(0, 12), 16);
+        long seed = Long.parseUnsignedLong(document.getSha256().substring(0, 12), 16);
 
         List<Vendor> activeVendors = vendors.findAllActive();
         Vendor vendor = activeVendors.get((int) (seed % activeVendors.size()));
@@ -43,18 +43,18 @@ public class FakeExtractor implements Extractor {
         LocalDate invoiceDate = LocalDate.now().minusDays(seed % 10);
 
         ExtractedInvoice.Line line = new ExtractedInvoice.Line(
-                "Services - " + vendor.category(), BigDecimal.ONE, subtotal, subtotal, "HST13");
+                "Services - " + vendor.getCategory(), BigDecimal.ONE, subtotal, subtotal, "HST13");
 
-        return new ExtractedInvoice("INVOICE", vendor.legalName(), null, null, invoiceNumberFrom(document),
+        return new ExtractedInvoice("INVOICE", vendor.getLegalName(), null, null, invoiceNumberFrom(document),
                 invoiceDate, invoiceDate.plusDays(30), "CAD", subtotal, hst, BigDecimal.ZERO, subtotal.add(hst),
                 null, "ON", List.of(line), 0.99, List.of());
     }
 
     /** "Invoice 4443.pdf" -> "4443"; otherwise a number derived from the hash. */
     private static String invoiceNumberFrom(SourceDocument document) {
-        String name = document.fileName() == null ? "" : document.fileName();
+        String name = document.getFileName() == null ? "" : document.getFileName();
         String stem = name.contains(".") ? name.substring(0, name.lastIndexOf('.')) : name;
         if (stem.startsWith("Invoice ")) return stem.substring("Invoice ".length());
-        return "FAKE-" + document.sha256().substring(0, 6).toUpperCase();
+        return "FAKE-" + document.getSha256().substring(0, 6).toUpperCase();
     }
 }

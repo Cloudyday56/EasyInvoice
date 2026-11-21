@@ -38,10 +38,10 @@ public class AuthorizationService {
 
     /** Throws 403 (and writes an audit event) if the user may not do this. */
     public void authorize(User user, Action action, Invoice invoice) {
-        List<ApprovalStep> steps = invoice == null ? List.of() : approvalSteps.forInvoice(invoice.id());
+        List<ApprovalStep> steps = invoice == null ? List.of() : approvalSteps.forInvoice(invoice.getId());
         Decision decision = decide(user, action, invoice, steps);
         if (!decision.allowed()) {
-            audit.record(Actor.of(user), invoice == null ? null : invoice.id(), null, "authz.denied", null,
+            audit.record(Actor.of(user), invoice == null ? null : invoice.getId(), null, "authz.denied", null,
                     null, null, Map.of("action", action.name(), "reason", decision.reason()));
             throw new ForbiddenException(decision.reason());
         }
@@ -66,20 +66,20 @@ public class AuthorizationService {
 
     public static Decision decide(User user, Action action, Invoice invoice, List<ApprovalStep> steps) {
         if (!user.isActive()) {
-            return Decision.deny("User " + user.id() + " is no longer active");
+            return Decision.deny("User " + user.getId() + " is no longer active");
         }
-        if (user.readOnly() && action.changesData()) {
+        if (user.isReadOnly() && action.changesData()) {
             return Decision.deny("Read-only users (auditor) cannot change anything");
         }
         return switch (action) {
             case VIEW_INVOICE -> canViewInvoice(user, invoice, steps);
-            case UPLOAD_INVOICE -> user.role() == Role.EMPLOYEE || user.role() == Role.ADMIN
+            case UPLOAD_INVOICE -> user.getRole() == Role.EMPLOYEE || user.getRole() == Role.ADMIN
                     ? Decision.allow()
                     : Decision.deny("Only Employees and Admins upload invoices");
             case APPROVE_INVOICE -> canApprove(user, invoice, steps);
             case RESOLVE_HOLD -> canResolveHold(user, invoice);
             case RELEASE_PAYMENT -> canRelease(user, invoice, steps);
-            case VIEW_ADMIN_SCREENS, RUN_ADMIN_TOOLS -> user.role() == Role.ADMIN
+            case VIEW_ADMIN_SCREENS, RUN_ADMIN_TOOLS -> user.getRole() == Role.ADMIN
                     ? Decision.allow()
                     : Decision.deny("Admins only");
         };
@@ -87,13 +87,13 @@ public class AuthorizationService {
 
     private static Decision canViewInvoice(User user, Invoice invoice, List<ApprovalStep> steps) {
         if (invoice == null) return Decision.deny("No invoice");
-        return switch (user.role()) {
+        return switch (user.getRole()) {
             case ADMIN -> Decision.allow();
-            case APPROVER -> Objects.equals(user.departmentId(), invoice.departmentId())
+            case APPROVER -> Objects.equals(user.getDepartmentId(), invoice.getDepartmentId())
                     || isAssignedToAnyStep(user, steps)
                     ? Decision.allow()
                     : Decision.deny("Approvers only see their own department's invoices");
-            case EMPLOYEE -> user.id().equals(invoice.requesterUserId())
+            case EMPLOYEE -> user.getId().equals(invoice.getRequesterUserId())
                     ? Decision.allow()
                     : Decision.deny("Employees only see invoices they submitted");
         };
@@ -101,14 +101,14 @@ public class AuthorizationService {
 
     private static Decision canApprove(User user, Invoice invoice, List<ApprovalStep> steps) {
         if (invoice == null) return Decision.deny("No invoice");
-        if (user.role() == Role.EMPLOYEE) {
+        if (user.getRole() == Role.EMPLOYEE) {
             return Decision.deny("Employees cannot approve");
         }
-        if (invoice.status() != InvoiceStatus.PENDING_APPROVAL) {
-            return Decision.deny("Invoice is not waiting for approval (status " + invoice.status() + ")");
+        if (invoice.getStatus() != InvoiceStatus.PENDING_APPROVAL) {
+            return Decision.deny("Invoice is not waiting for approval (status " + invoice.getStatus() + ")");
         }
         // Separation of duties #1: nobody approves their own invoice.
-        if (user.id().equals(invoice.requesterUserId())) {
+        if (user.getId().equals(invoice.getRequesterUserId())) {
             return Decision.deny("No self-approval: you requested this invoice");
         }
         Optional<ApprovalStep> current = currentStep(steps);
@@ -116,31 +116,31 @@ public class AuthorizationService {
             return Decision.deny("No approval step is open");
         }
         // Delegates are stored as the assignee (with acting_for = the person on leave).
-        if (!user.id().equals(current.get().assignedUserId())) {
-            return Decision.deny("You are not the assigned approver for step " + current.get().stepNo());
+        if (!user.getId().equals(current.get().getAssignedUserId())) {
+            return Decision.deny("You are not the assigned approver for step " + current.get().getStepNo());
         }
         // Department scope: an Approver acts for their own department, unless standing in as a delegate.
-        if (user.role() == Role.APPROVER && current.get().actingFor() == null
-                && !Objects.equals(user.departmentId(), invoice.departmentId())) {
+        if (user.getRole() == Role.APPROVER && current.get().getActingFor() == null
+                && !Objects.equals(user.getDepartmentId(), invoice.getDepartmentId())) {
             return Decision.deny("Invoice belongs to another department");
         }
         // Limit read from the user row at the moment of the action (never cached).
-        if (invoice.totalCad() == null) {
+        if (invoice.getTotalCad() == null) {
             return Decision.deny("Invoice amount is unknown");
         }
-        if (invoice.totalCad().compareTo(user.approvalLimitCad()) > 0) {
-            return Decision.deny("Amount " + invoice.totalCad() + " CAD is above your approval limit of "
-                    + user.approvalLimitCad());
+        if (invoice.getTotalCad().compareTo(user.getApprovalLimitCad()) > 0) {
+            return Decision.deny("Amount " + invoice.getTotalCad() + " CAD is above your approval limit of "
+                    + user.getApprovalLimitCad());
         }
         return Decision.allow();
     }
 
     private static Decision canResolveHold(User user, Invoice invoice) {
         if (invoice == null) return Decision.deny("No invoice");
-        if (user.role() != Role.ADMIN) {
+        if (user.getRole() != Role.ADMIN) {
             return Decision.deny("Only Admins work exception queues");
         }
-        if (invoice.status() != InvoiceStatus.ON_HOLD && invoice.status() != InvoiceStatus.ON_HOLD_VENDOR) {
+        if (invoice.getStatus() != InvoiceStatus.ON_HOLD && invoice.getStatus() != InvoiceStatus.ON_HOLD_VENDOR) {
             return Decision.deny("Invoice is not on hold");
         }
         return Decision.allow();
@@ -148,24 +148,24 @@ public class AuthorizationService {
 
     private static Decision canRelease(User user, Invoice invoice, List<ApprovalStep> steps) {
         if (invoice == null) return Decision.deny("No invoice");
-        if (user.role() != Role.ADMIN) {
+        if (user.getRole() != Role.ADMIN) {
             return Decision.deny("Only Admins release payments");
         }
-        if (invoice.status() != InvoiceStatus.SCHEDULED) {
-            return Decision.deny("Payment is not scheduled (invoice status " + invoice.status() + ")");
+        if (invoice.getStatus() != InvoiceStatus.SCHEDULED) {
+            return Decision.deny("Payment is not scheduled (invoice status " + invoice.getStatus() + ")");
         }
         // Separation of duties #2: whoever approved any step cannot release the payment.
         boolean approvedAStep = steps.stream()
-                .anyMatch(s -> s.isApproved() && user.id().equals(s.actedBy()));
+                .anyMatch(s -> s.isApproved() && user.getId().equals(s.getActedBy()));
         if (approvedAStep) {
             return Decision.deny("Approver cannot release: you approved a step of this invoice");
         }
-        BigDecimal amount = invoice.totalCad();
+        BigDecimal amount = invoice.getTotalCad();
         if (amount == null) {
             return Decision.deny("Invoice amount is unknown");
         }
-        if (amount.compareTo(user.releaseLimitCad()) > 0) {
-            return Decision.deny("Amount " + amount + " CAD is above your release limit of " + user.releaseLimitCad());
+        if (amount.compareTo(user.getReleaseLimitCad()) > 0) {
+            return Decision.deny("Amount " + amount + " CAD is above your release limit of " + user.getReleaseLimitCad());
         }
         return Decision.allow();
     }
@@ -174,10 +174,10 @@ public class AuthorizationService {
     public static Optional<ApprovalStep> currentStep(List<ApprovalStep> steps) {
         return steps.stream()
                 .filter(ApprovalStep::isPending)
-                .min(Comparator.comparingInt(ApprovalStep::stepNo));
+                .min(Comparator.comparingInt(ApprovalStep::getStepNo));
     }
 
     private static boolean isAssignedToAnyStep(User user, List<ApprovalStep> steps) {
-        return steps.stream().anyMatch(s -> user.id().equals(s.assignedUserId()));
+        return steps.stream().anyMatch(s -> user.getId().equals(s.getAssignedUserId()));
     }
 }

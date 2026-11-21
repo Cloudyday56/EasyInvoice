@@ -4,12 +4,16 @@ import com.brim.easyinvoice.audit.Actor;
 import com.brim.easyinvoice.audit.AuditService;
 import com.brim.easyinvoice.model.Flag;
 import com.brim.easyinvoice.model.Invoice;
+import com.brim.easyinvoice.model.InvoiceLine;
 import com.brim.easyinvoice.model.InvoiceStatus;
 import com.brim.easyinvoice.model.SourceDocument;
+import com.brim.easyinvoice.repo.FlagRepository;
+import com.brim.easyinvoice.repo.InvoiceLineRepository;
 import com.brim.easyinvoice.repo.InvoiceRepository;
 import com.brim.easyinvoice.repo.SourceDocumentRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.BeanWrapperImpl;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -22,6 +26,7 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Runs the pipeline. It owns:
@@ -38,9 +43,17 @@ public class PipelineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(PipelineRunner.class);
 
+    /** Invoice fields a node may change through StageResult.patch. Status is NOT here on purpose. */
+    private static final Set<String> PATCHABLE_FIELDS = Set.of(
+            "documentType", "vendorId", "vendorNameRaw", "vendorInvoiceNumber", "canonicalInvoiceNumber",
+            "invoiceDate", "dueDate", "currency", "subtotal", "gstHstAmount", "pstQstAmount", "total",
+            "fxRateToCad", "totalCad", "departmentId", "poId", "contractId", "shipToProvince", "riskScore");
+
     private final Map<NodeName, Node> nodes = new EnumMap<>(NodeName.class);
     private final JobRepository jobs;
     private final InvoiceRepository invoices;
+    private final InvoiceLineRepository invoiceLines;
+    private final FlagRepository flags;
     private final SourceDocumentRepository documents;
     private final InvoiceStateMachine stateMachine;
     private final AuditService audit;
@@ -49,6 +62,7 @@ public class PipelineRunner {
     private final int maxAttempts;
 
     public PipelineRunner(List<Node> allNodes, JobRepository jobs, InvoiceRepository invoices,
+                          InvoiceLineRepository invoiceLines, FlagRepository flags,
                           SourceDocumentRepository documents, InvoiceStateMachine stateMachine, AuditService audit,
                           PlatformTransactionManager transactionManager,
                           @Value("${app.pipeline.step-delay-ms}") long stepDelayMs,
@@ -61,6 +75,8 @@ public class PipelineRunner {
         }
         this.jobs = jobs;
         this.invoices = invoices;
+        this.invoiceLines = invoiceLines;
+        this.flags = flags;
         this.documents = documents;
         this.stateMachine = stateMachine;
         this.audit = audit;
@@ -102,12 +118,12 @@ public class PipelineRunner {
 
     private void runJob(Job job) {
         Invoice invoice = invoices.get(job.invoiceId());
-        if (invoice.status().isTerminal() || invoice.status() == InvoiceStatus.ON_HOLD) {
+        if (invoice.getStatus().isTerminal() || invoice.getStatus() == InvoiceStatus.ON_HOLD) {
             jobs.markDone(job.id());  // stale job: the invoice moved on (or was parked) meanwhile
             return;
         }
-        invoices.setCurrentNode(invoice.id(), job.node().name());
-        SourceDocument document = invoice.sourceDocumentId() == null ? null : documents.get(invoice.sourceDocumentId());
+        invoices.updateCurrentNode(invoice.getId(), job.node().name());
+        SourceDocument document = invoice.getSourceDocumentId() == null ? null : documents.get(invoice.getSourceDocumentId());
 
         StageResult result;
         try {
@@ -122,22 +138,27 @@ public class PipelineRunner {
 
         StageResult finalResult = result;
         transaction.executeWithoutResult(tx -> {
-            apply(invoice, job.node(), finalResult);
+            // Reload inside the transaction so the entity is managed: its changes are saved when the transaction commits.
+            apply(invoices.get(invoice.getId()), job.node(), finalResult);
             jobs.markDone(job.id());
         });
     }
 
     /** Persists what the node returned and moves the invoice on. */
     private void apply(Invoice invoice, NodeName node, StageResult result) {
-        invoices.applyPatch(invoice.id(), result.patch());
+        applyPatch(invoice, result.patch());
         if (result.lines() != null) {
-            invoices.replaceLines(invoice.id(), result.lines());
+            invoiceLines.deleteByInvoiceId(invoice.getId());
+            for (InvoiceLine line : result.lines()) {
+                line.setInvoiceId(invoice.getId());
+                invoiceLines.save(line);
+            }
         }
         if (result.outcome() != Outcome.WAIT) {
-            invoices.deleteFlagsFromNode(invoice.id(), node.name()); // re-runs replace their own flags
+            flags.deleteByInvoiceIdAndNodeAndOverriddenByIsNull(invoice.getId(), node.name()); // re-runs replace their own flags
         }
         for (FlagDraft flag : result.flags()) {
-            invoices.addFlag(invoice.id(), node.name(), flag.code(), flag.severity(), flag.message());
+            flags.save(new Flag(invoice.getId(), node.name(), flag.code(), flag.severity(), flag.message()));
         }
 
         Map<String, Object> payload = new HashMap<>();
@@ -147,27 +168,27 @@ public class PipelineRunner {
 
         switch (result.outcome()) {
             case PASS, FLAG -> {
-                audit.system(invoice.id(), "node." + result.outcome(), node.name(), null, null, payload);
+                audit.system(invoice.getId(), "node." + result.outcome(), node.name(), null, null, payload);
                 stateMachine.moveTo(invoice, node.statusOnPass(), Actor.SYSTEM, node.name(), null);
                 NodeName next = node.next();
-                if (next != null) jobs.enqueue(invoice.id(), next, stepDelayMs);
+                if (next != null) jobs.enqueue(invoice.getId(), next, stepDelayMs);
             }
             case BLOCK -> {
-                audit.system(invoice.id(), "node.BLOCK", node.name(), null, null, payload);
-                invoices.addFlag(invoice.id(), node.name(), result.reasonCode(), "BLOCK", result.message());
+                audit.system(invoice.getId(), "node.BLOCK", node.name(), null, null, payload);
+                flags.save(new Flag(invoice.getId(), node.name(), result.reasonCode(), "BLOCK", result.message()));
                 stateMachine.hold(invoice, result.holdQueue(), result.reasonCode(), result.message(), Actor.SYSTEM,
                         node.name());
             }
             case WAIT -> {
                 if (result.recheckAfterSeconds() == null) {
                     // Waiting for a person: log it once per run. Bank re-checks are not logged (too noisy).
-                    audit.system(invoice.id(), "node.WAIT", node.name(), null, null, payload);
+                    audit.system(invoice.getId(), "node.WAIT", node.name(), null, null, payload);
                 } else {
-                    jobs.enqueue(invoice.id(), node, result.recheckAfterSeconds() * 1000L);
+                    jobs.enqueue(invoice.getId(), node, result.recheckAfterSeconds() * 1000L);
                 }
             }
             case IGNORE -> {
-                audit.system(invoice.id(), "node.IGNORE", node.name(), null, null, payload);
+                audit.system(invoice.getId(), "node.IGNORE", node.name(), null, null, payload);
                 stateMachine.moveTo(invoice, InvoiceStatus.IGNORED, Actor.SYSTEM, node.name(), payload);
             }
         }
@@ -176,21 +197,33 @@ public class PipelineRunner {
     /** A node threw: retry with exponential backoff (2s, 4s, ...), then park it in the node's queue. */
     private void handleCrash(Job job, Invoice invoice, Exception e) {
         String error = e.getClass().getSimpleName() + ": " + e.getMessage();
-        log.warn("Node {} failed on {} (attempt {}): {}", job.node(), invoice.id(), job.attempts(), error);
+        log.warn("Node {} failed on {} (attempt {}): {}", job.node(), invoice.getId(), job.attempts(), error);
         if (job.attempts() < maxAttempts) {
             long backoffMs = 1000L * (1L << job.attempts());
             jobs.retryLater(job.id(), error, backoffMs);
-            audit.system(invoice.id(), "node.RETRY", job.node().name(), null, null,
+            audit.system(invoice.getId(), "node.RETRY", job.node().name(), null, null,
                     Map.of("attempt", job.attempts(), "error", error, "retryInMs", backoffMs));
             return;
         }
         transaction.executeWithoutResult(tx -> {
             jobs.markFailed(job.id(), error);
             String message = job.node().label() + " failed after " + maxAttempts + " attempts: " + error;
-            invoices.addFlag(invoice.id(), job.node().name(), "NODE_FAILED", "BLOCK", message);
-            stateMachine.hold(invoice, job.node().failureQueue(), "NODE_FAILED", message, Actor.SYSTEM,
-                    job.node().name());
+            flags.save(new Flag(invoice.getId(), job.node().name(), "NODE_FAILED", "BLOCK", message));
+            stateMachine.hold(invoices.get(invoice.getId()), job.node().failureQueue(), "NODE_FAILED", message,
+                    Actor.SYSTEM, job.node().name());
         });
+    }
+
+    /** Copies the node's patch onto the invoice, field by field, refusing anything not whitelisted. */
+    private void applyPatch(Invoice invoice, Map<String, Object> patch) {
+        if (patch == null || patch.isEmpty()) return;
+        BeanWrapperImpl wrapper = new BeanWrapperImpl(invoice);
+        for (Map.Entry<String, Object> entry : patch.entrySet()) {
+            if (!PATCHABLE_FIELDS.contains(entry.getKey())) {
+                throw new IllegalArgumentException("Invoice field not patchable: " + entry.getKey());
+            }
+            wrapper.setPropertyValue(entry.getKey(), entry.getValue());
+        }
     }
 
     /**
@@ -200,17 +233,17 @@ public class PipelineRunner {
      * TODO: delete once the real nodes produce real blocks.
      */
     private StageResult demoBlock(Invoice invoice, NodeName node, SourceDocument document) {
-        if (document == null || document.fileName() == null) return null;
+        if (document == null || document.getFileName() == null) return null;
         String marker = "block-" + node.name().toLowerCase().replace('_', '-');
-        if (!document.fileName().toLowerCase().contains(marker)) return null;
-        boolean alreadyResolved = invoices.flags(invoice.id()).stream()
-                .anyMatch(f -> "DEMO_BLOCK".equals(f.code()) && node.name().equals(f.node()) && isOverridden(f));
+        if (!document.getFileName().toLowerCase().contains(marker)) return null;
+        boolean alreadyResolved = flags.findByInvoiceIdOrderById(invoice.getId()).stream()
+                .anyMatch(f -> "DEMO_BLOCK".equals(f.getCode()) && node.name().equals(f.getNode()) && isOverridden(f));
         if (alreadyResolved) return null;
         return StageResult.block(node.failureQueue(), "DEMO_BLOCK",
                 "Demo block requested by file name (" + marker + ")");
     }
 
     private static boolean isOverridden(Flag flag) {
-        return flag.overriddenBy() != null;
+        return flag.getOverriddenBy() != null;
     }
 }

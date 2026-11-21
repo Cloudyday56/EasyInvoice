@@ -1,4 +1,4 @@
--- EasyInvoice schema. Run on every startup by DatabaseInitializer; every statement is idempotent.
+-- EasyInvoice schema. Spring Boot runs this at every startup (spring.sql.init); every statement is idempotent.
 -- Seeded master data keeps the ids from /data (U001, V001, AP-00001...). New rows get generated ids.
 
 CREATE SEQUENCE IF NOT EXISTS new_invoice_seq;

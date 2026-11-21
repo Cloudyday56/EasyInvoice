@@ -40,8 +40,8 @@ public class ApprovalExecutionNode implements Node {
 
     @Override
     public StageResult run(Invoice invoice, NodeContext ctx) {
-        List<ApprovalStep> live = steps.forInvoice(invoice.id()).stream()
-                .filter(s -> !"VOID".equals(s.status())).toList();
+        List<ApprovalStep> live = steps.forInvoice(invoice.getId()).stream()
+                .filter(s -> !"VOID".equals(s.getStatus())).toList();
         if (live.isEmpty()) {
             return StageResult.block(HoldQueue.ROUTING_ERROR, "NO_APPROVAL_STEPS", "No approval steps to execute");
         }
@@ -55,8 +55,8 @@ public class ApprovalExecutionNode implements Node {
         }
 
         ApprovalStep step = current.get();
-        notifications.notify(step.assignedUserId(), "approval_needed", invoice.id(),
-                invoice.id() + " needs your approval (step " + step.stepNo() + ")");
-        return StageResult.waitForHuman("Waiting for step " + step.stepNo() + ": " + step.assignedUserId());
+        notifications.notify(step.getAssignedUserId(), "approval_needed", invoice.getId(),
+                invoice.getId() + " needs your approval (step " + step.getStepNo() + ")");
+        return StageResult.waitForHuman("Waiting for step " + step.getStepNo() + ": " + step.getAssignedUserId());
     }
 }

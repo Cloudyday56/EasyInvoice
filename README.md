@@ -5,7 +5,7 @@ Accounts payable automation for Brim business cards (CodeJam16). Every invoice m
 hash-chained audit trail at every step.
 
 ```
-backend/    Java 21 · Spring Boot 4 · plain SQL (JdbcTemplate) · PostgreSQL
+backend/    Java 21 · Spring Boot 4 · Spring Data JPA (Hibernate) · PostgreSQL
 frontend/   React + JavaScript · Vite
 data/       sample dataset (CSV history, inbox emails, incoming invoice files)
 ```
@@ -24,8 +24,8 @@ Three containers start:
 | `backend` | http://localhost:8080 | Spring Boot API + pipeline runner |
 | `db` | localhost:5432 | Postgres 16 (db/user/password `easyinvoice`) |
 
-On first start the backend creates the schema (`backend/src/main/resources/schema.sql`) and
-loads `/data` into it. Data persists in a Docker volume; **Audit & tools → Reset demo** wipes
+On first start Spring runs `backend/src/main/resources/schema.sql` (the tables), Hibernate checks the
+entities match it (`ddl-auto=validate`), and the backend loads `/data` into the database. Data persists in a Docker volume; **Audit & tools → Reset demo** wipes
 everything and reloads it. `docker compose down -v` deletes the volumes too.
 
 ### LLM (OpenRouter)
@@ -44,11 +44,13 @@ To check the key works: log in as an Admin → **Audit & tools → Test LLM conn
 
 ### Local development (without the app containers)
 
+The entities use Lombok. In IntelliJ, enable *Settings → Build → Compiler → Annotation Processors → Enable annotation processing*.
+
 ```bash
 docker compose up db                       # just Postgres
 cd backend && ./mvnw spring-boot:run       # API on :8080 (reads ../data)
 cd frontend && npm install && npm run dev  # UI on :5173, proxies /api to :8080
-cd backend && ./mvnw test                  # unit tests
+cd backend && ./mvnw test                  # unit tests + an end-to-end test on an embedded Postgres (no Docker needed)
 ```
 
 ## Demo script
@@ -86,10 +88,14 @@ human actions (approve, resume, release) ──► HumanActionService ──► 
 | Nodes | `pipeline/nodes/*Node.java` | The 10 steps |
 | Security | `security/AuthorizationService.java` | `authorize(user, action, invoice)`, rules in pure `decide()` |
 | Audit | `audit/AuditHasher.java`, `AuditService.java` | `hash = sha256(prev_hash + row)`, verify, CSV |
-| Seed | `db/SeedLoader.java`, `PolicySeeds.java` | CSV → tables; reset demo |
+| Data access | `model/*` (entities), `repo/*` (Spring Data repositories) | Plain JPA: one entity and one repository per table the app reads or writes |
+| Seed | `db/SeedLoader.java`, `PolicySeeds.java` | CSV → tables with `JdbcTemplate` (bulk insert); reset demo |
 
 Outcomes: `PASS` / `FLAG` go to the next node. `BLOCK` parks the invoice in a queue. `WAIT` means
 waiting for a person, or re-checking the bank. `IGNORE` means not an invoice.
+
+Raw SQL (`JdbcTemplate`) is used in only three places where JPA is a poor fit: the job queue
+(`FOR UPDATE SKIP LOCKED`), the audit append lock, and the CSV bulk seed.
 
 **Login** is a user switcher: the UI sends `X-User-Id`, and the server re-reads that user's role
 and limits on every request. No passwords, because this is a demo.

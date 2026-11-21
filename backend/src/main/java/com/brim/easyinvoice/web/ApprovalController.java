@@ -37,11 +37,11 @@ public class ApprovalController {
     public List<ApprovalItem> myApprovals(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId) {
         User user = currentUser.require(userId);
         List<ApprovalItem> items = new ArrayList<>();
-        for (ApprovalStep step : steps.pendingAssignedTo(user.id())) {
-            Invoice invoice = invoices.get(step.invoiceId());
-            if (invoice.status() != InvoiceStatus.PENDING_APPROVAL) continue;
-            List<ApprovalStep> all = steps.forInvoice(invoice.id());
-            boolean isCurrent = AuthorizationService.currentStep(all).map(s -> s.id() == step.id()).orElse(false);
+        for (ApprovalStep step : steps.pendingAssignedTo(user.getId())) {
+            Invoice invoice = invoices.get(step.getInvoiceId());
+            if (invoice.getStatus() != InvoiceStatus.PENDING_APPROVAL) continue;
+            List<ApprovalStep> all = steps.forInvoice(invoice.getId());
+            boolean isCurrent = AuthorizationService.currentStep(all).map(s -> s.getId().equals(step.getId())).orElse(false);
             if (!isCurrent) continue; // an earlier step still has to be decided first
             Decision decision = AuthorizationService.decide(user, Action.APPROVE_INVOICE, invoice, all);
             items.add(new ApprovalItem(step, invoice, decision.allowed(), decision.reason()));

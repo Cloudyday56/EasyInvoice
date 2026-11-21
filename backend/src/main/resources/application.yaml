@@ -9,7 +9,14 @@ spring:
     password: ${DB_PASSWORD:easyinvoice}
   sql:
     init:
-      mode: never   # DatabaseInitializer runs schema.sql itself, then seeds
+      mode: always  # Spring runs schema.sql at startup, before Hibernate validates the mapping
+      # schema.sql contains a trigger function with ';' inside $$...$$, which Spring's script splitter
+      # would cut in half. A separator that never appears makes it run the whole file as one statement.
+      separator: "^^^ END OF SCRIPT ^^^"
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate  # schema.sql owns the tables; Hibernate only checks the entities match them
   servlet:
     multipart:
       max-file-size: 10MB

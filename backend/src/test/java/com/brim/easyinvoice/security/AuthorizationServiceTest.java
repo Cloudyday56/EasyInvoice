@@ -22,8 +22,7 @@ class AuthorizationServiceTest {
     static final User OTHER_DEPT_APPROVER = user("A2", Role.APPROVER, "D02", 10_000, 0, "active");
     static final User ADMIN = user("ADM1", Role.ADMIN, "D04", 50_000, 100_000, "active");
     static final User SECOND_ADMIN = user("ADM2", Role.ADMIN, "D04", 250_000, 250_000, "active");
-    static final User AUDITOR = new User("AUD", "Auditor", null, null, "D04", null, Role.ADMIN, "auditor", true,
-            BigDecimal.ZERO, BigDecimal.ZERO, "active", null);
+    static final User AUDITOR = readOnlyAdmin("AUD");
     static final User TERMINATED_ADMIN = user("ADM9", Role.ADMIN, "D04", 50_000, 100_000, "terminated");
 
     @Nested
@@ -191,18 +190,47 @@ class AuthorizationServiceTest {
 
     private static User user(String id, Role role, String dept, double approvalLimit, double releaseLimit,
                              String status) {
-        return new User(id, id, null, null, dept, null, role, role.name().toLowerCase(), false,
-                BigDecimal.valueOf(approvalLimit), BigDecimal.valueOf(releaseLimit), status, null);
+        User user = new User();
+        user.setId(id);
+        user.setFullName(id);
+        user.setRole(role);
+        user.setDepartmentId(dept);
+        user.setApprovalLimitCad(BigDecimal.valueOf(approvalLimit));
+        user.setReleaseLimitCad(BigDecimal.valueOf(releaseLimit));
+        user.setStatus(status);
+        return user;
+    }
+
+    private static User readOnlyAdmin(String id) {
+        User user = user(id, Role.ADMIN, "D04", 0, 0, "active");
+        user.setSourceRole("auditor");
+        user.setReadOnly(true);
+        return user;
     }
 
     private static Invoice invoice(InvoiceStatus status, String requesterId, String dept, double totalCad) {
-        return new Invoice("INV-1", null, "INVOICE", "V001", null, "123", "123", null, null, null, "CAD",
-                null, null, null, BigDecimal.valueOf(totalCad), BigDecimal.ONE, BigDecimal.valueOf(totalCad),
-                dept, requesterId, null, null, null, null, status, null, null, null, null, null, null);
+        Invoice invoice = new Invoice();
+        invoice.setId("INV-1");
+        invoice.setVendorId("V001");
+        invoice.setCurrency("CAD");
+        invoice.setTotal(BigDecimal.valueOf(totalCad));
+        invoice.setTotalCad(BigDecimal.valueOf(totalCad));
+        invoice.setDepartmentId(dept);
+        invoice.setRequesterUserId(requesterId);
+        invoice.setStatus(status);
+        return invoice;
     }
 
     private static ApprovalStep step(int no, String assignee, String actingFor, String status, String actedBy) {
-        return new ApprovalStep(no, "INV-1", no, "APPROVER", null, assignee, actingFor, status, actedBy, null, null);
+        ApprovalStep step = new ApprovalStep();
+        step.setInvoiceId("INV-1");
+        step.setStepNo(no);
+        step.setRequiredRole("APPROVER");
+        step.setAssignedUserId(assignee);
+        step.setActingFor(actingFor);
+        step.setStatus(status);
+        step.setActedBy(actedBy);
+        return step;
     }
 
     private static List<ApprovalStep> pendingStepFor(String assignee) {

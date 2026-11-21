@@ -48,7 +48,7 @@ public class ExtractionNode implements Node {
             return StageResult.block(HoldQueue.EXTRACTION_REVIEW, "NO_FILE", "There is no file to read");
         }
 
-        ExtractedInvoice data = extractor.extract(doc, storage.read(doc.storagePath()));
+        ExtractedInvoice data = extractor.extract(doc, storage.read(doc.getStoragePath()));
 
         if (!data.hasRequiredFields()) {
             return StageResult.block(HoldQueue.EXTRACTION_REVIEW, "REQUIRED_FIELD_MISSING",
@@ -59,31 +59,36 @@ public class ExtractionNode implements Node {
                     "Extraction confidence " + data.confidence() + " is below " + MIN_CONFIDENCE);
         }
 
-        // HashMap, not Map.of: extracted values may be null.
+        // Keys are Invoice field names. HashMap, not Map.of: extracted values may be null.
         Map<String, Object> patch = new HashMap<>();
-        patch.put("document_type", data.documentType() == null ? "INVOICE" : data.documentType());
-        patch.put("vendor_name_raw", data.vendorName());
-        patch.put("vendor_invoice_number", data.invoiceNumber());
-        patch.put("invoice_date", data.invoiceDate());
-        patch.put("due_date", data.dueDate());
+        patch.put("documentType", data.documentType() == null ? "INVOICE" : data.documentType());
+        patch.put("vendorNameRaw", data.vendorName());
+        patch.put("vendorInvoiceNumber", data.invoiceNumber());
+        patch.put("invoiceDate", data.invoiceDate());
+        patch.put("dueDate", data.dueDate());
         patch.put("currency", data.currency());
         patch.put("subtotal", data.subtotal());
-        patch.put("gst_hst_amount", data.gstHstAmount());
-        patch.put("pst_qst_amount", data.pstQstAmount());
+        patch.put("gstHstAmount", data.gstHstAmount());
+        patch.put("pstQstAmount", data.pstQstAmount());
         patch.put("total", data.total());
-        patch.put("po_id", data.poNumber());
-        patch.put("ship_to_province", data.shipToProvince());
+        patch.put("poId", data.poNumber());
+        patch.put("shipToProvince", data.shipToProvince());
 
         List<InvoiceLine> lines = new ArrayList<>();
         List<ExtractedInvoice.Line> extractedLines = data.lines() == null ? List.of() : data.lines();
         for (int i = 0; i < extractedLines.size(); i++) {
             ExtractedInvoice.Line l = extractedLines.get(i);
             boolean federalTax = l.taxCode() == null || l.taxCode().startsWith("HST") || l.taxCode().startsWith("GST");
-            lines.add(new InvoiceLine(i + 1, l.description(), l.quantity(), l.unitPrice(), l.amount(),
-                    null, invoice.departmentId(),
-                    federalTax ? l.taxCode() : null,
-                    federalTax ? null : l.taxCode(),
-                    null));
+            InvoiceLine line = new InvoiceLine();   // the runner sets invoiceId when it saves the lines
+            line.setLineNo(i + 1);
+            line.setDescription(l.description());
+            line.setQuantity(l.quantity());
+            line.setUnitPrice(l.unitPrice());
+            line.setAmount(l.amount());
+            line.setDepartmentId(invoice.getDepartmentId());
+            line.setGstHstCode(federalTax ? l.taxCode() : null);
+            line.setPstQstCode(federalTax ? null : l.taxCode());
+            lines.add(line);
         }
 
         String message = "Extracted with " + extractor.name() + " (confidence " + data.confidence() + ")";

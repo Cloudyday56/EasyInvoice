@@ -2,6 +2,8 @@ package com.brim.easyinvoice.intake;
 
 import com.brim.easyinvoice.audit.Actor;
 import com.brim.easyinvoice.audit.AuditService;
+import com.brim.easyinvoice.model.Invoice;
+import com.brim.easyinvoice.model.InvoiceStatus;
 import com.brim.easyinvoice.model.SourceDocument;
 import com.brim.easyinvoice.model.User;
 import com.brim.easyinvoice.pipeline.NodeName;
@@ -25,6 +27,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -124,20 +127,36 @@ public class IntakeService {
 
         Optional<SourceDocument> known = documents.findByIdempotencyKey(idempotencyKey);
         if (known.isPresent()) {
-            String existingInvoice = invoices.findIdBySourceDocument(known.get().id()).orElse(null);
+            String existingInvoice = invoices.findBySourceDocumentId(known.get().getId()).map(Invoice::getId).orElse(null);
             return new IntakeResult(existingInvoice, true);
         }
 
-        String storagePath = bytes == null ? null : storage.save(bytes, sha, extensionOf(fileName));
-        long documentId = documents.insert(channel, emailId, idempotencyKey, fileName, contentType,
-                bytes == null ? null : (long) bytes.length, sha, storagePath, sender, subject, body, receivedAt,
-                uploader == null ? null : uploader.id());
+        SourceDocument document = new SourceDocument();
+        document.setChannel(channel);
+        document.setEmailId(emailId);
+        document.setIdempotencyKey(idempotencyKey);
+        document.setFileName(fileName);
+        document.setContentType(contentType);
+        document.setSizeBytes(bytes == null ? null : (long) bytes.length);
+        document.setSha256(sha);
+        document.setStoragePath(bytes == null ? null : storage.save(bytes, sha, extensionOf(fileName)));
+        document.setSender(sender);
+        document.setSubject(subject);
+        document.setBody(body);
+        document.setReceivedAt(receivedAt);
+        document.setUploadedBy(uploader == null ? null : uploader.getId());
+        documents.save(document);
 
         // The uploader is the requester; their department pays. Email has no requester (routing will ask).
-        String invoiceId = invoices.nextInvoiceId();
-        invoices.insertDraft(invoiceId, documentId,
-                uploader == null ? null : uploader.id(),
-                uploader == null ? null : uploader.departmentId());
+        Invoice invoice = new Invoice();
+        invoice.setId(String.format("EI-%05d", invoices.nextInvoiceNumber()));
+        invoice.setSourceDocumentId(document.getId());
+        invoice.setRequesterUserId(uploader == null ? null : uploader.getId());
+        invoice.setDepartmentId(uploader == null ? null : uploader.getDepartmentId());
+        invoice.setReceivedDate(LocalDate.now());
+        invoice.setStatus(InvoiceStatus.RECEIVED);
+        invoices.save(invoice);
+        String invoiceId = invoice.getId();
 
         Actor actor = uploader == null ? Actor.SYSTEM : Actor.of(uploader);
         audit.record(actor, invoiceId, null, "invoice.received", NodeName.INTAKE_GATEWAY.name(), null, "RECEIVED",

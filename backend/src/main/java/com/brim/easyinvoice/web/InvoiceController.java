@@ -13,6 +13,8 @@ import com.brim.easyinvoice.model.SourceDocument;
 import com.brim.easyinvoice.model.User;
 import com.brim.easyinvoice.pipeline.HumanActionService;
 import com.brim.easyinvoice.repo.ApprovalStepRepository;
+import com.brim.easyinvoice.repo.FlagRepository;
+import com.brim.easyinvoice.repo.InvoiceLineRepository;
 import com.brim.easyinvoice.repo.InvoiceRepository;
 import com.brim.easyinvoice.repo.PaymentRepository;
 import com.brim.easyinvoice.repo.SourceDocumentRepository;
@@ -55,7 +57,8 @@ public class InvoiceController {
     public record DocumentInfo(long id, String channel, String fileName, String contentType, String sender,
                                String subject, String body) {
         static DocumentInfo of(SourceDocument d) {
-            return new DocumentInfo(d.id(), d.channel(), d.fileName(), d.contentType(), d.sender(), d.subject(), d.body());
+            return new DocumentInfo(d.getId(), d.getChannel(), d.getFileName(), d.getContentType(), d.getSender(),
+                    d.getSubject(), d.getBody());
         }
     }
 
@@ -64,6 +67,8 @@ public class InvoiceController {
 
     private final CurrentUser currentUser;
     private final InvoiceRepository invoices;
+    private final InvoiceLineRepository invoiceLines;
+    private final FlagRepository flags;
     private final ApprovalStepRepository steps;
     private final PaymentRepository payments;
     private final SourceDocumentRepository documents;
@@ -74,12 +79,14 @@ public class InvoiceController {
     private final FileStorage storage;
     private final ObjectMapper json;
 
-    public InvoiceController(CurrentUser currentUser, InvoiceRepository invoices, ApprovalStepRepository steps,
-                             PaymentRepository payments, SourceDocumentRepository documents,
+    public InvoiceController(CurrentUser currentUser, InvoiceRepository invoices, InvoiceLineRepository invoiceLines,
+                             FlagRepository flags, ApprovalStepRepository steps, PaymentRepository payments, SourceDocumentRepository documents,
                              AuthorizationService authorization, AuditService audit, IntakeService intake,
                              HumanActionService actions, FileStorage storage, ObjectMapper json) {
         this.currentUser = currentUser;
         this.invoices = invoices;
+        this.invoiceLines = invoiceLines;
+        this.flags = flags;
         this.steps = steps;
         this.payments = payments;
         this.documents = documents;
@@ -96,8 +103,8 @@ public class InvoiceController {
     public List<Invoice> list(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId) {
         User user = currentUser.require(userId);
         Map<String, List<ApprovalStep>> stepsByInvoice = steps.allGroupedByInvoice();
-        return invoices.findAll().stream()
-                .filter(inv -> authorization.canView(user, inv, stepsByInvoice.getOrDefault(inv.id(), List.of())))
+        return invoices.findAllByOrderByCreatedAtDescIdDesc().stream()
+                .filter(inv -> authorization.canView(user, inv, stepsByInvoice.getOrDefault(inv.getId(), List.of())))
                 .toList();
     }
 
@@ -110,9 +117,9 @@ public class InvoiceController {
 
         List<ApprovalStep> invoiceSteps = steps.forInvoice(id);
         List<AuditEvent> events = audit.forInvoice(id);
-        SourceDocument doc = invoice.sourceDocumentId() == null ? null : documents.get(invoice.sourceDocumentId());
-        return new InvoiceDetail(invoice, invoices.lines(id), invoices.flags(id), invoiceSteps,
-                payments.forInvoice(id), events, doc == null ? null : DocumentInfo.of(doc),
+        SourceDocument doc = invoice.getSourceDocumentId() == null ? null : documents.get(invoice.getSourceDocumentId());
+        return new InvoiceDetail(invoice, invoiceLines.findByInvoiceIdOrderByLineNo(id), flags.findByInvoiceIdOrderById(id),
+                invoiceSteps, payments.findByInvoiceIdOrderById(id), events, doc == null ? null : DocumentInfo.of(doc),
                 PipelineProgress.compute(invoice, events, json),
                 authorization.allowedActions(user, invoice, invoiceSteps));
     }
@@ -124,12 +131,12 @@ public class InvoiceController {
         User user = currentUser.require(userId);
         Invoice invoice = invoices.get(id);
         authorization.authorize(user, Action.VIEW_INVOICE, invoice);
-        if (invoice.sourceDocumentId() == null) throw new NotFoundException("Invoice " + id + " has no document");
-        SourceDocument doc = documents.get(invoice.sourceDocumentId());
+        if (invoice.getSourceDocumentId() == null) throw new NotFoundException("Invoice " + id + " has no document");
+        SourceDocument doc = documents.get(invoice.getSourceDocumentId());
         if (!doc.hasFile()) throw new NotFoundException("Document has no file");
         return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(doc.contentType()))
-                .body(storage.read(doc.storagePath()));
+                .contentType(MediaType.parseMediaType(doc.getContentType()))
+                .body(storage.read(doc.getStoragePath()));
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

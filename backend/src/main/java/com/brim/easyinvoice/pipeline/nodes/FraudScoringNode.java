@@ -28,6 +28,6 @@ public class FraudScoringNode implements Node {
 
     @Override
     public StageResult run(Invoice invoice, NodeContext ctx) {
-        return StageResult.pass("Stub: risk score 0 (no signals implemented yet)", Map.of("risk_score", 0));
+        return StageResult.pass("Stub: risk score 0 (no signals implemented yet)", Map.of("riskScore", 0));
     }
 }
