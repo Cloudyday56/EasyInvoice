@@ -1,0 +1,58 @@
+[
+  {
+    "email_id": "EM-011",
+    "from_name": "Prairie Natural Gas Utility Accounts Receivable",
+    "from_address": "ar@prairienatural.example",
+    "to_address": "ap@harborline-logistics.example",
+    "subject": "Facture PR26-1012",
+    "received_at": "2026-10-23T13:40:00",
+    "body": "Bonjour,\n\nVeuillez trouver ci-joint la facture PR26-1012.\n\nCordialement,\nPrairie Natural Gas Utility",
+    "attachments": [
+      "scan_8749.png"
+    ]
+  },
+  {
+    "email_id": "EM-017",
+    "from_name": "Voyageur Corporate Travel Accounts Receivable",
+    "from_address": "ar@voyageurcorporate.example",
+    "to_address": "ap@harborline-logistics.example",
+    "subject": "Invoice 000903-A from Voyageur Corporate Travel",
+    "received_at": "2026-10-27T12:41:00",
+    "body": "Hello,\n\nPlease find attached our invoice 000903-A for services provided. Payment terms are on the invoice.\n\nThank you,\nVoyageur Corporate Travel Accounts Receivable",
+    "attachments": [
+      "voyageurcorporat-inv-017.pdf"
+    ]
+  },
+  {
+    "email_id": "EM-028",
+    "from_name": "Polar Freight Lines Ltd. Accounts Receivable",
+    "from_address": "ar@polarfreight.example",
+    "to_address": "ap@harborline-logistics.example",
+    "subject": "Payment due: invoice 000961",
+    "received_at": "2026-10-29T12:17:00",
+    "body": "Bonjour,\n\nVeuillez trouver ci-joint la facture 000961.\n\nCordialement,\nPolar Freight Lines Ltd.",
+    "attachments": [
+      "Invoice 000961.pdf"
+    ]
+  },
+  {
+    "from_name": "Brightmore Consulting Group",
+    "from_address": "ar@brightmoreconsulting.example",
+    "subject": "Invoice attached",
+    "received_at": "2026-10-29T16:29:00",
+    "body": "Hello,\n\nPlease find our October invoice attached.\n\nBrightmore Consulting",
+    "attachments": [],
+    "email_id": "EM-058",
+    "to_address": "ap@harborline-logistics.example"
+  },
+  {
+    "from_name": "Deskhive Furniture",
+    "from_address": "news@deskhivefurniture.example",
+    "subject": "Fall sale: 20% off ergonomic chairs",
+    "received_at": "2026-10-31T07:47:00",
+    "body": "Our fall sale is on. Shop now and save on ergonomic chairs and sit/stand desks.",
+    "attachments": [],
+    "email_id": "EM-059",
+    "to_address": "ap@harborline-logistics.example"
+  }
+]

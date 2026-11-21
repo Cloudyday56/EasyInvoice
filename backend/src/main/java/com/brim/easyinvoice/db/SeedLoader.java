@@ -20,7 +20,11 @@ import com.brim.easyinvoice.model.TaxCode;
 import com.brim.easyinvoice.model.User;
 import com.brim.easyinvoice.model.Vendor;
 import com.brim.easyinvoice.model.ApprovalStep;
+import jakarta.persistence.Column;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,13 +34,16 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.PropertyNamingStrategies;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
@@ -48,6 +55,11 @@ import java.util.function.Function;
  * Jackson is strict: a CSV column the entity does not have fails the load instead of being dropped silently.
  *
  * Historical invoices are loaded with their final status; they do not go through the pipeline.
+ *
+ * Strict (default): the first bad cell aborts the whole seed.
+ * Lenient (app.seed.lenient=true): a bad row (unparseable number/date/enum, missing required value, duplicate id,
+ * unknown foreign key) is skipped and reported, and everything else still loads. A bad file is skipped as a whole.
+ * Skipped rows are logged and listed in the "seed.loaded" audit event.
  */
 @Component
 @Transactional   // one transaction for the whole seed; DemoResetService's transaction is joined when resetting
@@ -55,6 +67,7 @@ public class SeedLoader {
 
     private static final Logger log = LoggerFactory.getLogger(SeedLoader.class);
     private static final int FLUSH_EVERY = 500;
+    private static final int MAX_REPORTED_REJECTS = 100;
 
     private final ObjectMapper csvMapper = JsonMapper.builder()
             .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
@@ -63,16 +76,27 @@ public class SeedLoader {
     private final EntityManager entityManager;
     private final AuditService audit;
     private final Path csvDir;
+    private final boolean lenient;
+
+    // Per seed run: ids saved so far (as text, per entity type) and the rows skipped in lenient mode.
+    private final Map<Class<?>, Set<String>> savedIds = new HashMap<>();
+    private final List<String> rejects = new ArrayList<>();
+    private int rejectCount;
 
     public SeedLoader(EntityManager entityManager, AuditService audit,
-                      @Value("${app.data-dir}") String dataDir) {
+                      @Value("${app.data-dir}") String dataDir,
+                      @Value("${app.seed.lenient:false}") boolean lenient) {
         this.entityManager = entityManager;
         this.audit = audit;
         this.csvDir = Path.of(dataDir).resolve("data");
+        this.lenient = lenient;
     }
 
     public void seedAll() {
-        log.info("Seeding from {}", csvDir.toAbsolutePath());
+        log.info("Seeding from {} ({})", csvDir.toAbsolutePath(), lenient ? "lenient: bad rows are skipped" : "strict");
+        savedIds.clear();
+        rejects.clear();
+        rejectCount = 0;
         Map<String, Object> counts = new LinkedHashMap<>();
 
         // Foreign keys fix the order: a table is loaded after every table it points at.
@@ -81,11 +105,11 @@ public class SeedLoader {
         Map<String, String[]> userManagersAndDelegates = new HashMap<>();
 
         counts.put("departments", load("departments.csv", Department.class, row -> rename(row, "department_id", "id"),
-                List.of("manager_user_id"), (d, refs) -> departmentManagers.put(d.getId(), (String) refs.get("manager_user_id"))));
+                List.of("manager_user_id"), (d, refs) -> departmentManagers.putIfAbsent(d.getId(), (String) refs.get("manager_user_id"))));
         counts.put("users", load("users.csv", User.class, SeedLoader::userRow,
                 List.of("department_id", "manager_id", "delegate_user_id"), (u, refs) -> {
                     u.setDepartment(ref(Department.class, refs.get("department_id")));
-                    userManagersAndDelegates.put(u.getId(),
+                    userManagersAndDelegates.putIfAbsent(u.getId(),
                             new String[]{(String) refs.get("manager_id"), (String) refs.get("delegate_user_id")});
                 }));
         linkDepartmentManagers(departmentManagers);
@@ -151,6 +175,11 @@ public class SeedLoader {
         // TODO: inbox/emails.json and incoming_invoices/ are NOT seeded on purpose:
         //       they are unprocessed mail. An Admin pulls them in with "Poll inbox" (POST /api/admin/poll-inbox).
 
+        if (lenient) {
+            counts.put("rejected_rows", rejectCount);
+            counts.put("rejected", List.copyOf(rejects));
+            if (rejectCount > rejects.size()) counts.put("rejected_not_listed", rejectCount - rejects.size());
+        }
         log.info("Seed complete: {}", counts);
         audit.system(null, "seed.loaded", null, null, null, counts);
     }
@@ -176,21 +205,31 @@ public class SeedLoader {
             log.warn("TODO seed: {} not found, {} left empty", file, entityType.getSimpleName());
             return 0;
         }
-        return persistAll(entityType, CsvReader.read(file).stream().map(toRow).toList(), relationColumns, linker);
+        List<Map<String, String>> csvRows;
+        try {
+            csvRows = CsvReader.read(file);
+        } catch (RuntimeException e) {
+            if (!lenient) throw e;
+            reject(fileName, 0, "(whole file)", e);
+            return 0;
+        }
+        return persistAll(fileName, entityType, csvRows, toRow, relationColumns, linker);
     }
 
-    private <T> int persistAll(Class<T> entityType, List<Map<String, Object>> rows,
+    private <T> int persistAll(String fileName, Class<T> entityType, List<Map<String, String>> csvRows,
+                               Function<Map<String, String>, Map<String, Object>> toRow,
                                List<String> relationColumns, BiConsumer<T, Map<String, Object>> linker) {
         int count = 0;
-        for (Map<String, Object> row : rows) {
-            row.replaceAll((column, value) -> emptyToNull(value));
-            Map<String, Object> refs = new HashMap<>();
-            for (String column : relationColumns) {
-                refs.put(column, row.remove(column));
+        int rowNo = 0;
+        for (Map<String, String> csvRow : csvRows) {
+            rowNo++;
+            try {
+                persistRow(entityType, toRow.apply(csvRow), relationColumns, linker);
+            } catch (RuntimeException e) {
+                if (!lenient) throw e;
+                reject(fileName, rowNo, csvRow.values().stream().findFirst().orElse(""), e);
+                continue;
             }
-            T entity = csvMapper.convertValue(row, entityType);
-            if (linker != null) linker.accept(entity, refs);
-            entityManager.persist(entity);
             if (++count % FLUSH_EVERY == 0) {
                 entityManager.flush();
                 entityManager.clear();
@@ -201,15 +240,82 @@ public class SeedLoader {
         return count;
     }
 
+    private <T> void persistRow(Class<T> entityType, Map<String, Object> row,
+                                List<String> relationColumns, BiConsumer<T, Map<String, Object>> linker) {
+        row.replaceAll((column, value) -> emptyToNull(value));
+        Map<String, Object> refs = new HashMap<>();
+        for (String column : relationColumns) {
+            refs.put(column, row.remove(column));
+        }
+        T entity = csvMapper.convertValue(row, entityType);
+        if (linker != null) linker.accept(entity, refs);
+        String id = idOf(entity);   // null for a database-generated id (lines, steps...): nothing to check or remember
+        if (lenient) {
+            if (id == null && hasAssignedId(entityType)) throw new IllegalArgumentException("missing id");
+            if (id != null && savedIds.getOrDefault(entityType, Set.of()).contains(id)) throw new IllegalArgumentException("duplicate id " + id);
+            requireMandatoryValues(entity);
+        }
+        entityManager.persist(entity);
+        if (id != null) savedIds.computeIfAbsent(entityType, t -> new HashSet<>()).add(id);
+    }
+
+    private static boolean hasAssignedId(Class<?> type) {
+        for (Field field : type.getDeclaredFields()) {
+            if (field.isAnnotationPresent(Id.class)) return !field.isAnnotationPresent(GeneratedValue.class);
+        }
+        return false;
+    }
+
+    private String idOf(Object entity) {
+        Object id = entityManager.getEntityManagerFactory().getPersistenceUnitUtil().getIdentifier(entity);
+        return id == null ? null : String.valueOf(id);
+    }
+
+    /** Lenient mode only: a column the entity marks as required (nullable = false) must not be empty. */
+    private static void requireMandatoryValues(Object entity) {
+        for (Field field : entity.getClass().getDeclaredFields()) {
+            Column column = field.getAnnotation(Column.class);
+            JoinColumn join = field.getAnnotation(JoinColumn.class);
+            boolean required = (field.isAnnotationPresent(Id.class) && !field.isAnnotationPresent(GeneratedValue.class))
+                    || (column != null && !column.nullable()) || (join != null && !join.nullable());
+            if (!required) continue;
+            try {
+                field.setAccessible(true);
+                if (field.get(entity) == null) throw new IllegalArgumentException("missing required value: " + field.getName());
+            } catch (IllegalAccessException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+    }
+
+    private void reject(String fileName, int rowNo, String rowId, RuntimeException cause) {
+        Throwable root = cause;
+        while (root.getCause() != null) root = root.getCause();
+        String reason = (root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage()).lines().findFirst().orElse("");
+        String where = rowNo == 0 ? fileName + " " + rowId : fileName + " row " + rowNo + " (" + rowId + ")";
+        log.warn("Seed: skipped {}: {}", where, reason);
+        rejectCount++;
+        if (rejects.size() < MAX_REPORTED_REJECTS) rejects.add(where + ": " + reason);
+    }
+
     /** A reference to the row with this id (no query); null when the CSV cell was empty. */
     private <E> E ref(Class<E> type, Object id) {
-        return id == null ? null : entityManager.getReference(type, id);
+        if (id == null) return null;
+        if (lenient && !savedIds.getOrDefault(type, Set.of()).contains(String.valueOf(id))) {
+            throw new IllegalArgumentException("unknown " + type.getSimpleName() + " " + id);   // would break the foreign key
+        }
+        return entityManager.getReference(type, id);
     }
 
     private void linkDepartmentManagers(Map<String, String> managerByDepartment) {
         managerByDepartment.forEach((departmentId, managerId) -> {
-            if (managerId != null) {
-                entityManager.find(Department.class, departmentId).setManager(ref(User.class, managerId));
+            Department department = departmentId == null ? null : entityManager.find(Department.class, departmentId);
+            if (managerId == null || department == null) return;   // (no department: its row was skipped)
+            try {
+                department.setManager(ref(User.class, managerId));
+            } catch (RuntimeException e) {
+                if (!lenient) throw e;
+                reject("departments.csv", 0, departmentId + " manager", e);
             }
         });
         entityManager.flush();
@@ -218,12 +324,24 @@ public class SeedLoader {
 
     private void linkUserManagersAndDelegates(Map<String, String[]> byUser) {
         byUser.forEach((userId, managerAndDelegate) -> {
-            User user = entityManager.find(User.class, userId);
-            user.setManager(ref(User.class, managerAndDelegate[0]));
-            user.setDelegate(ref(User.class, managerAndDelegate[1]));
+            User user = userId == null ? null : entityManager.find(User.class, userId);
+            if (user == null) return;   // its row was skipped
+            user.setManager(linkedUser(userId, "manager", managerAndDelegate[0]));
+            user.setDelegate(linkedUser(userId, "delegate", managerAndDelegate[1]));
         });
         entityManager.flush();
         entityManager.clear();
+    }
+
+    /** A manager or delegate. In lenient mode an unknown one is reported and left empty; the user itself still loads. */
+    private User linkedUser(String userId, String relation, String targetId) {
+        try {
+            return ref(User.class, targetId);
+        } catch (RuntimeException e) {
+            if (!lenient) throw e;
+            reject("users.csv", 0, userId + " " + relation, e);
+            return null;
+        }
     }
 
     private static Object emptyToNull(Object value) {
