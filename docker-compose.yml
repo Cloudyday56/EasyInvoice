@@ -1,0 +1,52 @@
+# One command: docker compose up --build
+#   frontend  http://localhost:5173   (nginx serving the React build, proxies /api to the backend)
+#   backend   http://localhost:8080   (Spring Boot)
+#   db        localhost:5432          (Postgres, user/password easyinvoice)
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: easyinvoice
+      POSTGRES_USER: easyinvoice
+      POSTGRES_PASSWORD: easyinvoice
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U easyinvoice -d easyinvoice"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  backend:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/easyinvoice?stringtype=unspecified
+      DB_USER: easyinvoice
+      DB_PASSWORD: easyinvoice
+      DATA_DIR: /data
+      STORAGE_DIR: /storage
+      # Read from the .env file next to this one (see .env.example). Empty = LLM off.
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-4.5}
+      EXTRACTOR: ${EXTRACTOR:-fake}
+    volumes:
+      - ./data:/data:ro      # the sample dataset, read-only
+      - storage:/storage     # uploaded documents
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  pgdata:
+  storage:
