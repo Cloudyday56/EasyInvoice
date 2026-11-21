@@ -277,6 +277,18 @@ export default function App() {
     [notify, refreshDetail, refreshList],
   )
 
+  /** Label for invoices that are finished (or nearly), known from the list row alone. */
+  const closedLabel = (status: string): string | null =>
+    status === 'PAID'
+      ? 'Paid · Export audit trail'
+      : status === 'REJECTED'
+        ? 'Rejected'
+        : status === 'IGNORED'
+          ? 'Ignored · not an invoice'
+          : status === 'RELEASED'
+            ? 'Released · awaiting settlement'
+            : null
+
   const askReason = (request: ReasonRequest) => setReasonRequest(request)
 
   const actionsFor = (invoice: Invoice | null): { primary: PanelAction; secondary: PanelAction[] } | null => {
@@ -287,6 +299,20 @@ export default function App() {
     const id = invoice.id
 
     if (!detail) {
+      // Closed invoices need nothing from the detail to be labelled, so show the final label right away
+      // instead of flashing "Loading…" first.
+      const closed = closedLabel(status)
+      if (closed) {
+        return {
+          primary: {
+            label: closed,
+            tone: status === 'PAID' ? 'success' : 'dark',
+            kind: status === 'PAID' ? 'paid' : 'info',
+            disabled: true,
+          },
+          secondary: [],
+        }
+      }
       return { primary: { label: 'Loading…', tone: 'dark', kind: 'approve', disabled: true }, secondary: [] }
     }
     const allowed = detail.allowedActions
@@ -402,21 +428,14 @@ export default function App() {
     const waitingStep = detail.approvalSteps.find((s) => s.pending)
     const waitingOn = waitingStep ? users.find((u) => u.id === waitingStep.assignedUserId)?.fullName : null
     const label =
-      status === 'PAID'
-        ? 'Paid · Export audit trail'
-        : status === 'REJECTED'
-          ? 'Rejected'
-          : status === 'IGNORED'
-            ? 'Ignored · not an invoice'
-            : status === 'RELEASED'
-              ? 'Released · awaiting settlement'
-              : status === 'SCHEDULED'
-                ? 'Scheduled · an Admin who did not approve must release'
-                : status === 'PENDING_APPROVAL'
-                  ? `Waiting on ${waitingOn ?? 'approver'}`
-                  : isOnHold(status)
-                    ? 'On hold · an Admin must resolve'
-                    : `Processing · ${invoice.pipeline.node} ${invoice.pipeline.label}`
+      closedLabel(status) ??
+      (status === 'SCHEDULED'
+        ? 'Scheduled · an Admin who did not approve must release'
+        : status === 'PENDING_APPROVAL'
+          ? `Waiting on ${waitingOn ?? 'approver'}`
+          : isOnHold(status)
+            ? 'On hold · an Admin must resolve'
+            : `Processing · ${invoice.pipeline.node} ${invoice.pipeline.label}`)
     return {
       primary: {
         label,
