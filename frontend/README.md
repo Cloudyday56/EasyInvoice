@@ -29,6 +29,21 @@ npm run preview  # serve the production build
 npm run lint     # TypeScript only
 ```
 
+## Docker (frontend only)
+
+The frontend can be built and served as a static production bundle through nginx:
+
+```bash
+cd frontend
+docker compose up --build
+```
+
+Open <http://localhost:5173>. Stop it with `docker compose down`.
+
+`nginx.conf` proxies `/api` to `http://host.docker.internal:8080`, so a Spring Boot backend
+running on the host is reachable from the container. If the backend runs in another container,
+point `proxy_pass` at that compose service name instead and place both services on a shared network.
+
 ## Structure
 
 ```
@@ -44,6 +59,9 @@ src/
   data/invoices.ts           realistic Harborline AP inbox (CAD + USD, GST/HST/QST)
   types.ts                   invoice and filter types
   lib/filters.ts             queue labels
+Dockerfile                   multi-stage build (Node build → nginx serve)
+docker-compose.yml           frontend-only service on port 5173
+nginx.conf                   SPA fallback + /api proxy to the host backend
 ```
 
 ## What the UI makes obvious
