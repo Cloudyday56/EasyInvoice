@@ -31,10 +31,10 @@ services:
       DATA_DIR: /data
       STORAGE_DIR: /storage
       # Read from the .env file next to this one (see .env.example). Empty = LLM off.
-      LLM_API_KEY: ${LLM_API_KEY:-${OPENROUTER_API_KEY:-}}
-      LLM_BASE_URL: ${LLM_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai}
-      LLM_MODEL: ${LLM_MODEL:-gemini-3.8-flash}
-      EXTRACTOR: ${EXTRACTOR:-manual}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_BASE_URL: ${LLM_BASE_URL}
+      LLM_MODEL: ${LLM_MODEL}
+      EXTRACTOR: ${EXTRACTOR}
     volumes:
       - ./data:/data:ro      # the sample dataset, read-only
       - storage:/storage     # uploaded documents

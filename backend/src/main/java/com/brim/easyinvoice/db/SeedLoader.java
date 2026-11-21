@@ -110,7 +110,7 @@ public class SeedLoader {
                 List.of("vendor_id"), (c, refs) -> c.setVendor(ref(Vendor.class, refs.get("vendor_id")))));
         counts.put("tax_codes", load("tax_codes.csv", TaxCode.class, SeedLoader::asRow));
         counts.put("fx_rates", load("fx_rates.csv", FxRate.class, row -> rename(row, "date", "rate_date")));
-        counts.put("policies", persistAll(Policy.class, PolicySeeds.rows(), List.of(), null));
+        counts.put("policies", load("approval_policies.csv", Policy.class, row -> rename(row, "rule_id", "id")));
 
         Map<String, String> firstInvoiceByNumber = new HashMap<>();
         List<String[]> repeats = new ArrayList<>();

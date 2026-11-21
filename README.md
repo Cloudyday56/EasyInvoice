@@ -153,4 +153,4 @@ anyone who approved a step of an invoice cannot release its payment. A delegate'
 - Historical invoices (426) are loaded with their final status. They did not run through the pipeline.
 - The history has **6 repeated (vendor, invoice number) pairs**. The unique constraint would refuse them, so the later copy is loaded without a canonical number and gets a `HISTORICAL_REPEAT_NUMBER` flag. They are logged at startup.
 - Payments with status `outstanding` (uncashed cheques) are loaded as `SENT`. The original value is kept in `source_status`.
-- `approval_policies.csv` is written in prose, so it was hand-translated to JSON in `PolicySeeds.java`, with the original text kept.
+- `approval_policies.csv` is loaded as written into the `policies` table. The conditions are prose, so approval routing applies the tiers in code (`ApprovalRoutingNode`).
