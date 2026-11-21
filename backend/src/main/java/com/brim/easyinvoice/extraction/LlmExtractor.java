@@ -30,6 +30,8 @@ public class LlmExtractor implements Extractor {
             invoiceNumber, invoiceDate (YYYY-MM-DD), dueDate (YYYY-MM-DD), currency ("CAD" or "USD"),
             subtotal, gstHstAmount, pstQstAmount, total (numbers, no currency symbols),
             poNumber, shipToProvince (2-letter code),
+            remitBankInstitution, remitBankTransit, remitBankAccount (payee bank details printed on the invoice,
+            including any "remit to" or "deposit to" block),
             lines (array of {description, quantity, unitPrice, amount, taxCode}),
             taxCode one of HST13, GST5, PST7_BC, QST9975, EXEMPT, FOREIGN,
             confidence (0 to 1), lowConfidenceFields (array of key names you are unsure about).

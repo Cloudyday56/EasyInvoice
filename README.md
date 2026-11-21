@@ -47,6 +47,31 @@ docker compose up --build
 To check the key works: log in as an Admin → **Audit & tools → Test LLM connection**
 (or `POST /api/admin/llm/test`). The client is `backend/.../llm/LlmClient.java`.
 
+### Fraud scoring
+
+Node 6 (`FRAUD_SCORING`) scores every invoice from 0–100 using weighted signals:
+
+| Signal | Default points | What it checks |
+|---|---:|---|
+| `BANK_DETAILS_MISMATCH` | 100 | Remit-to bank on the invoice vs. the vendor master — **immediate block** |
+| `UNVERIFIED_BANK_CHANGE` | 45 | Bank change in the last 30 days without a verified callback |
+| `LOOKALIKE_SENDER_DOMAIN` | 45 | Sender domain resembles the vendor / AP contact domain |
+| `FREE_MAIL_DOMAIN` | 25 | Sender uses a free-mail provider |
+| `SENDER_DOMAIN_MISMATCH` | 10 | Sender domain differs from the vendor's AP contact domain |
+| `DUPLICATE_INVOICE_NUMBER` | 30 | Same vendor + canonical invoice number already exists |
+| `SPLIT_INVOICE` | 25 | Another similar invoice within ±3 days, both under $10k |
+| `AMOUNT_OUTLIER` | 20 | Total more than 3σ above ≥5 prior vendor invoices |
+
+Score `< passBelow` (40) → `PASS`, `40–69` → `FLAG` (warnings travel with the invoice),
+`>= blockAt` (70) or a bank mismatch → `BLOCK` into **Needs attention → Fraud hold**.
+Resolving a fraud hold marks its reviewed signals as overridden and re-enters at `FRAUD_SCORING`,
+so the node skips those signal codes and only new evidence can block the invoice again.
+`riskScore`, signal codes and per-signal points are written to the hash-chained audit event.
+
+All thresholds, weights, windows and free-mail domains live under `app.fraud.*` in
+`backend/src/main/resources/application.yaml` (bound by `pipeline/FraudScoringConfig.java`).
+Override them with environment variables, e.g. `APP_FRAUD_BLOCK_AT=80`.
+
 ### Local development (without the app containers)
 
 The entities use Lombok. In IntelliJ, enable *Settings → Build → Compiler → Annotation Processors → Enable annotation processing*.

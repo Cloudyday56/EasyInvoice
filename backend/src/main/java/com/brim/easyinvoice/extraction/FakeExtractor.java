@@ -47,7 +47,8 @@ public class FakeExtractor implements Extractor {
 
         return new ExtractedInvoice("INVOICE", vendor.getLegalName(), null, null, invoiceNumberFrom(document),
                 invoiceDate, invoiceDate.plusDays(30), "CAD", subtotal, hst, BigDecimal.ZERO, subtotal.add(hst),
-                null, "ON", List.of(line), 0.99, List.of());
+                null, "ON", vendor.getBankInstitution(), vendor.getBankTransit(), vendor.getBankAccount(),
+                List.of(line), 0.99, List.of());
     }
 
     /** "Invoice 4443.pdf" -> "4443"; otherwise a number derived from the hash. */

@@ -28,9 +28,9 @@ public enum HoldQueue {
             case MISSING_DOCUMENT -> NodeName.EXTRACTION;
             case EXTRACTION_REVIEW, VENDOR_HOLD -> NodeName.VENDOR_MATCH;
             case VALIDATION_FAILED -> NodeName.VALIDATION_RULES;
-            case FRAUD_HOLD -> NodeName.APPROVAL_ROUTING;
+            // A fraud fix must be re-scored; Admin-overridden signals are skipped by the node.
+            case FRAUD_HOLD -> NodeName.FRAUD_SCORING;
             case ROUTING_ERROR -> NodeName.APPROVAL_EXECUTION;
-            // TODO: resume at FRAUD_SCORING instead when the fix changed bank details.
             case PAYMENT_EXCEPTIONS -> NodeName.PAYMENT_SCHEDULING;
         };
     }
