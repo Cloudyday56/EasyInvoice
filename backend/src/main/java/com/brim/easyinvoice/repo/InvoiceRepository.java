@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -42,6 +43,17 @@ public interface InvoiceRepository extends JpaRepository<Invoice, String> {
 
     /** Repeat guard: does another invoice from this vendor already have this canonical number? */
     boolean existsByVendor_IdAndCanonicalInvoiceNumberAndIdNot(String vendorId, String canonicalNumber, String invoiceId);
+
+    /** Prior invoices for the same vendor, used by the amount-outlier signal at N6. */
+    List<Invoice> findByVendor_IdAndIdNot(String vendorId, String invoiceId);
+
+    /** Invoices from the same vendor in a date window, used by the split-invoice signal at N6. */
+    @Query("select i from Invoice i where i.vendor.id = :vendorId and i.id <> :invoiceId " +
+            "and i.invoiceDate between :from and :to")
+    List<Invoice> findByVendorAndDateWindow(@Param("vendorId") String vendorId,
+                                            @Param("invoiceId") String invoiceId,
+                                            @Param("from") LocalDate from,
+                                            @Param("to") LocalDate to);
 
     /** Written before a node runs, so the UI can show which node is working. */
     @Modifying

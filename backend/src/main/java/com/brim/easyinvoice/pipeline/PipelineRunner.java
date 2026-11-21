@@ -48,7 +48,8 @@ public class PipelineRunner {
     private static final Set<String> PATCHABLE_FIELDS = Set.of(
             "documentType", "vendor", "vendorNameRaw", "vendorInvoiceNumber", "canonicalInvoiceNumber",
             "invoiceDate", "dueDate", "currency", "subtotal", "gstHstAmount", "pstQstAmount", "total",
-            "fxRateToCad", "totalCad", "department", "poNumberRaw", "purchaseOrder", "contract", "shipToProvince", "riskScore");
+            "fxRateToCad", "totalCad", "department", "poNumberRaw", "purchaseOrder", "contract", "shipToProvince",
+            "remitBankInstitution", "remitBankTransit", "remitBankAccount", "riskScore");
 
     private final Map<NodeName, Node> nodes = new EnumMap<>(NodeName.class);
     private final JobRepository jobs;
@@ -162,6 +163,7 @@ public class PipelineRunner {
         Map<String, Object> payload = new HashMap<>();
         payload.put("message", result.message());
         if (result.reasonCode() != null) payload.put("reasonCode", result.reasonCode());
+        if (result.patch().containsKey("riskScore")) payload.put("riskScore", result.patch().get("riskScore"));
         if (!result.flags().isEmpty()) payload.put("flags", result.flags().stream().map(FlagDraft::code).toList());
 
         switch (result.outcome()) {

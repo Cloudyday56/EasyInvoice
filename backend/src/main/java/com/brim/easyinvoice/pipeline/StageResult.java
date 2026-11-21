@@ -40,6 +40,11 @@ public record StageResult(
         return new StageResult(Outcome.PASS, List.of(), patch, lines, null, message, null, null);
     }
 
+    /** A pass that still attaches warning flags. Erasure prevents overloading pass() with a FlagDraft list. */
+    public static StageResult passWithFlags(String message, Map<String, Object> patch, List<FlagDraft> flags) {
+        return new StageResult(Outcome.PASS, flags, patch, null, null, message, null, null);
+    }
+
     public static StageResult flag(String message, List<FlagDraft> flags, Map<String, Object> patch,
                                    List<InvoiceLine> lines) {
         return new StageResult(Outcome.FLAG, flags, patch, lines, null, message, null, null);
@@ -47,6 +52,12 @@ public record StageResult(
 
     public static StageResult block(HoldQueue queue, String reasonCode, String message) {
         return new StageResult(Outcome.BLOCK, List.of(), Map.of(), null, reasonCode, message, queue, null);
+    }
+
+    /** A block that also persists its score and the signals that produced it. */
+    public static StageResult blockWithFlags(HoldQueue queue, String reasonCode, String message,
+                                             Map<String, Object> patch, List<FlagDraft> flags) {
+        return new StageResult(Outcome.BLOCK, flags, patch, null, reasonCode, message, queue, null);
     }
 
     public static StageResult waitForHuman(String message) {

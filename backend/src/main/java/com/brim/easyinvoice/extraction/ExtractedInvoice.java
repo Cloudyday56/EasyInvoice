@@ -23,6 +23,9 @@ public record ExtractedInvoice(
         BigDecimal total,
         String poNumber,
         String shipToProvince,
+        String remitBankInstitution,  // payee bank details printed on the invoice
+        String remitBankTransit,
+        String remitBankAccount,
         List<Line> lines,
         double confidence,            // 0..1, overall
         List<String> lowConfidenceFields) {

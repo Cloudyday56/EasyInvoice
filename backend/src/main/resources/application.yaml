@@ -23,6 +23,36 @@ app:
     max-attempts: 3
   bank:
     settle-after-ms: 4000  # mock bank: SENT -> SETTLED after this delay
+  fraud:
+    pass-below: 40              # score < 40 -> PASS
+    block-at: 70                # score >= 70 -> FRAUD_HOLD; 40..69 -> FLAG only
+    bank-change-window-days: 30
+    split-window-days: 3
+    split-limit-cad: 10000
+    split-tolerance-percent: 10
+    min-history-samples: 5
+    outlier-sigma: 3
+    free-mail-domains:
+      - gmail.com
+      - yahoo.com
+      - hotmail.com
+      - outlook.com
+      - icloud.com
+      - aol.com
+      - proton.me
+      - protonmail.com
+      - live.com
+      - msn.com
+      - mail.com
+      - gmail.ca
+    bank-mismatch-weight: 100        # immediate block, regardless of the total
+    unverified-bank-change-weight: 45
+    lookalike-domain-weight: 45
+    sender-domain-mismatch-weight: 10
+    free-mail-domain-weight: 25
+    duplicate-invoice-weight: 30
+    split-invoice-weight: 25
+    amount-outlier-weight: 20
   extractor: ${EXTRACTOR:llm}   # fake | llm
   llm:
     base-url: ${LLM_BASE_URL:https://openrouter.ai/api/v1}

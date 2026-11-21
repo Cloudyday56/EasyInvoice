@@ -78,6 +78,9 @@ public class ExtractionNode implements Node {
         patch.put("poNumberRaw", data.poNumber());
         patch.put("purchaseOrder", data.poNumber() == null ? null : purchaseOrders.findById(data.poNumber()).orElse(null));
         patch.put("shipToProvince", data.shipToProvince());
+        patch.put("remitBankInstitution", data.remitBankInstitution());
+        patch.put("remitBankTransit", data.remitBankTransit());
+        patch.put("remitBankAccount", data.remitBankAccount());
 
         List<InvoiceLine> lines = new ArrayList<>();
         List<ExtractedInvoice.Line> extractedLines = data.lines() == null ? List.of() : data.lines();

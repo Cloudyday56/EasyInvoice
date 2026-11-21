@@ -109,7 +109,14 @@ public class HumanActionService {
         authorization.authorize(user, Action.RESOLVE_HOLD, invoice);
 
         // The blocking flags stay visible, marked as overridden with the Admin's written reason.
-        for (Flag flag : flags.findByInvoice_IdAndSeverityAndOverriddenByIsNull(invoice.getId(), FlagSeverity.BLOCK)) {
+        // On a fraud hold also override the score's individual signals, so re-entering FRAUD_SCORING
+        // does not block again on the same, already reviewed, signals.
+        boolean fraudHold = HoldQueue.FRAUD_HOLD.name().equals(invoice.getHoldQueue());
+        for (Flag flag : flags.findByInvoice_IdOrderById(invoice.getId())) {
+            if (flag.isOverridden()) continue;
+            boolean blockingFlag = flag.getSeverity() == FlagSeverity.BLOCK;
+            boolean fraudSignal = fraudHold && NodeName.FRAUD_SCORING.name().equals(flag.getNode());
+            if (!blockingFlag && !fraudSignal) continue;
             flag.setOverriddenBy(user);
             flag.setOverrideReason(reason);
         }

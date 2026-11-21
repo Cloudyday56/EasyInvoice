@@ -130,7 +130,7 @@ function paymentOf(dto: InvoiceDto, detail?: InvoiceDetail): PaymentMethod {
 
 function flagsOf(dto: InvoiceDto, detail?: InvoiceDetail): InvoiceFlag[] {
   const flags = new Set<InvoiceFlag>()
-  if (dto.holdQueue === 'FRAUD_HOLD' || (dto.riskScore ?? 0) >= 60) flags.add('fraud')
+  if (dto.holdQueue === 'FRAUD_HOLD' || (dto.riskScore ?? 0) >= 40) flags.add('fraud')
   if (isOnHold(dto.status) && dto.holdQueue !== 'FRAUD_HOLD') flags.add('critical')
   if (detail?.flags.some((f) => f.severity === 'BLOCK' && !f.overriddenBy)) flags.add('critical')
   if (detail?.flags.some((f) => /FRAUD|BANK/i.test(f.code) && !f.overriddenBy)) flags.add('fraud')

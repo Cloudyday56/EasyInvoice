@@ -85,6 +85,10 @@ public class Invoice extends BaseEntity<String> {
     private Contract contract;
 
     private String shipToProvince;
+    // Remit-to bank details as printed on the invoice; compared with the vendor master at N6.
+    private String remitBankInstitution;
+    private String remitBankTransit;
+    private String remitBankAccount;
     private Integer riskScore;
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
