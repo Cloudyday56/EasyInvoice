@@ -9,6 +9,8 @@ import java.util.Optional;
 
 public interface VendorRepository extends JpaRepository<Vendor, String> {
 
+    Optional<Vendor> findFirstByGstHstNumber(String gstHstNumber);
+
     Optional<Vendor> findFirstByLegalNameIgnoreCase(String legalName);
 
     List<Vendor> findByStatus(VendorStatus status);

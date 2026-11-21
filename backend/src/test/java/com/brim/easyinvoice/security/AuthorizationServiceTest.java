@@ -21,13 +21,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AuthorizationServiceTest {
 
     // ---- people (department D01 unless noted) ----
-    static final User EMPLOYEE = user("E1", Role.EMPLOYEE, "D01", 0, 0, "active");
-    static final User APPROVER = user("A1", Role.APPROVER, "D01", 10_000, 0, "active");
-    static final User OTHER_DEPT_APPROVER = user("A2", Role.APPROVER, "D02", 10_000, 0, "active");
-    static final User ADMIN = user("ADM1", Role.ADMIN, "D04", 50_000, 100_000, "active");
-    static final User SECOND_ADMIN = user("ADM2", Role.ADMIN, "D04", 250_000, 250_000, "active");
-    static final User AUDITOR = readOnlyAdmin("AUD");
-    static final User TERMINATED_ADMIN = user("ADM9", Role.ADMIN, "D04", 50_000, 100_000, "terminated");
+    static final User EMPLOYEE = user("E1", Role.EMPLOYEE, "D01", 0, "active");
+    static final User APPROVER = user("A1", Role.APPROVER, "D01", 10_000, "active");
+    static final User OTHER_DEPT_APPROVER = user("A2", Role.APPROVER, "D02", 10_000, "active");
+    static final User ADMIN = user("ADM1", Role.ADMIN, "D04", 50_000, "active");
+    static final User SECOND_ADMIN = user("ADM2", Role.ADMIN, "D04", 250_000, "active");
+    static final User TERMINATED_ADMIN = user("ADM9", Role.ADMIN, "D04", 50_000, "terminated");
 
     @Nested
     class Approve {
@@ -87,6 +86,30 @@ class AuthorizationServiceTest {
         }
 
         @Test
+        void adminInTheMiddleOfAChainIsNotCappedButTheLastStepIs() {
+            Invoice invoice = invoice(InvoiceStatus.PENDING_APPROVAL, "E1", "D01", 60_000);   // ADMIN's limit is 50k
+            List<ApprovalStep> middle = List.of(step(1, "ADM1", null, "PENDING", null),
+                    step(2, "ADM2", null, "PENDING", null));
+            assertThat(decide(ADMIN, Action.APPROVE_INVOICE, invoice, middle).allowed()).isTrue();
+            List<ApprovalStep> last = List.of(step(1, "ADM1", null, "PENDING", null));
+            assertThat(decide(ADMIN, Action.APPROVE_INVOICE, invoice, last).allowed()).isFalse();
+        }
+
+        @Test
+        void creditNotesAreComparedByTheSizeOfTheAmount() {
+            Invoice invoice = invoice(InvoiceStatus.PENDING_APPROVAL, "E1", "D01", -20_000);
+            assertThat(decide(APPROVER, Action.APPROVE_INVOICE, invoice, pendingStepFor("A1")).allowed()).isFalse();
+        }
+
+        @Test
+        void nobodyApprovesTwoStepsOfTheSameInvoice() {
+            Invoice invoice = invoice(InvoiceStatus.PENDING_APPROVAL, "E1", "D01", 2_000);
+            List<ApprovalStep> steps = List.of(step(1, "ADM1", null, "APPROVED", "ADM1"),
+                    step(2, "ADM1", null, "PENDING", null));
+            assertThat(decide(ADMIN, Action.APPROVE_INVOICE, invoice, steps).allowed()).isFalse();
+        }
+
+        @Test
         void stepsAreDecidedInOrder() {
             Invoice invoice = invoice(InvoiceStatus.PENDING_APPROVAL, "E1", "D01", 2_000);
             List<ApprovalStep> steps = List.of(step(1, "A1", null, "PENDING", null),
@@ -121,10 +144,17 @@ class AuthorizationServiceTest {
         }
 
         @Test
-        void amountAboveReleaseLimitIsRefused() {
-            Invoice invoice = invoice(InvoiceStatus.SCHEDULED, "E1", "D01", 150_000);
-            assertThat(decide(ADMIN, Action.RELEASE_PAYMENT, invoice, List.of()).allowed()).isFalse();
-            assertThat(decide(SECOND_ADMIN, Action.RELEASE_PAYMENT, invoice, List.of()).allowed()).isTrue();
+        void anyAdminReleasesAnyAmount() {
+            Invoice invoice = invoice(InvoiceStatus.SCHEDULED, "E1", "D01", 400_000);
+            assertThat(decide(ADMIN, Action.RELEASE_PAYMENT, invoice, List.of()).allowed()).isTrue();
+        }
+
+        @Test
+        void personWhoWasStoodInForCannotReleaseEither() {
+            Invoice invoice = invoice(InvoiceStatus.SCHEDULED, "E1", "D01", 2_000);
+            ApprovalStep delegated = step(1, "ADM2", "ADM1", "APPROVED", "ADM2");   // ADM2 approved for ADM1
+            assertThat(decide(ADMIN, Action.RELEASE_PAYMENT, invoice, List.of(delegated)).allowed()).isFalse();
+            assertThat(decide(SECOND_ADMIN, Action.RELEASE_PAYMENT, invoice, List.of(delegated)).allowed()).isFalse();
         }
 
         @Test
@@ -159,14 +189,6 @@ class AuthorizationServiceTest {
         }
 
         @Test
-        void auditorCanLookButNotTouch() {
-            Invoice invoice = invoice(InvoiceStatus.SCHEDULED, "E1", "D01", 2_000);
-            assertThat(decide(AUDITOR, Action.VIEW_INVOICE, invoice, List.of()).allowed()).isTrue();
-            assertThat(decide(AUDITOR, Action.RELEASE_PAYMENT, invoice, List.of()).allowed()).isFalse();
-            assertThat(decide(AUDITOR, Action.RUN_ADMIN_TOOLS, null, List.of()).allowed()).isFalse();
-        }
-
-        @Test
         void terminatedUserCanDoNothing() {
             Invoice invoice = invoice(InvoiceStatus.PAID, "E1", "D01", 1);
             assertThat(decide(TERMINATED_ADMIN, Action.VIEW_INVOICE, invoice, List.of()).allowed()).isFalse();
@@ -192,23 +214,14 @@ class AuthorizationServiceTest {
         return AuthorizationService.decide(user, action, invoice, steps);
     }
 
-    private static User user(String id, Role role, String dept, double approvalLimit, double releaseLimit,
-                             String status) {
+    private static User user(String id, Role role, String dept, double approvalLimit, String status) {
         User user = new User();
         user.setId(id);
         user.setFullName(id);
         user.setRole(role);
         user.setDepartment(department(dept));
         user.setApprovalLimitCad(BigDecimal.valueOf(approvalLimit));
-        user.setReleaseLimitCad(BigDecimal.valueOf(releaseLimit));
         user.setStatus(UserStatus.valueOf(status.toUpperCase()));
-        return user;
-    }
-
-    private static User readOnlyAdmin(String id) {
-        User user = user(id, Role.ADMIN, "D04", 0, 0, "active");
-        user.setSourceRole("auditor");
-        user.setReadOnly(true);
         return user;
     }
 

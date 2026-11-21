@@ -118,7 +118,7 @@ class PipelineEndToEndTest {
         User financeManager = users.get("U003");
 
         // Upload -> the runner moves it through the nodes until a person must approve.
-        MockMultipartFile file = new MockMultipartFile("file", "Invoice 9001.pdf", "application/pdf", "pdf bytes".getBytes());
+        MockMultipartFile file = realPdf("Invoice 000809.pdf");   // Cloudbarn-style packaging vendor, $5,748.75
         String invoiceId = intake.upload(employee, file).invoiceId();
         waitForStatus(invoiceId, InvoiceStatus.PENDING_APPROVAL);
 
@@ -152,18 +152,17 @@ class PipelineEndToEndTest {
         assertThat(approvalController.myApprovals("U007")).isEmpty();   // nothing waiting any more
         assertThat(queueController.queues("U001")).hasSize(9);          // 8 exception queues + ignored mail
         assertThat(json.writeValueAsString(userController.lookups("U001"))).contains("\"legalName\"");
-        assertThat(json.writeValueAsString(userController.allUsers())).contains("\"readOnly\"");
+        assertThat(json.writeValueAsString(userController.allUsers())).contains("\"approvalLimitCad\"");
     }
 
     @Test
     @Order(2)
-    void aBlockedInvoiceParksInAQueueAndResumesAtTheRightNode() {
+    void aBlockedInvoiceParksInAQueueAndResumesAtTheRightNode() throws IOException {
         User employee = users.get("U013");
-        User admin = users.get("U004");   // AP clerk
+        User admin = users.get("U003");   // finance manager
 
         // A file named like block-<node> makes that node BLOCK once (demo hook in the runner).
-        MockMultipartFile file = new MockMultipartFile("file", "Invoice 9002_block-vendor-match.pdf",
-                "application/pdf", "other bytes".getBytes());
+        MockMultipartFile file = realPdf("Invoice 853.pdf", "Invoice 853_block-vendor-match.pdf");
         String invoiceId = intake.upload(employee, file).invoiceId();
         waitForStatus(invoiceId, InvoiceStatus.ON_HOLD);
 
@@ -180,18 +179,18 @@ class PipelineEndToEndTest {
         // The block stays visible on the invoice, marked as overridden with the reason.
         Flag flag = flags.findByInvoice_IdOrderById(invoiceId).stream()
                 .filter(f -> "DEMO_BLOCK".equals(f.getCode())).findFirst().orElseThrow();
-        assertThat(flag.getOverriddenById()).isEqualTo("U004");
+        assertThat(flag.getOverriddenById()).isEqualTo("U003");
         assertThat(flag.getOverrideReason()).isEqualTo("Checked the vendor by phone");
     }
 
     @Test
     @Order(3)
     void pollingTheInboxIsIdempotent() {
-        Map<String, Integer> first = intake.pollInbox(users.get("U004"));
+        Map<String, Integer> first = intake.pollInbox(users.get("U003"));
         assertThat(first.get("emails")).isEqualTo(59);
         assertThat(first.get("created")).isEqualTo(60);   // 59 emails, one has two attachments
 
-        Map<String, Integer> second = intake.pollInbox(users.get("U004"));
+        Map<String, Integer> second = intake.pollInbox(users.get("U003"));
         assertThat(second.get("created")).isZero();
         assertThat(second.get("alreadyKnown")).isEqualTo(60);
     }
@@ -285,6 +284,16 @@ class PipelineEndToEndTest {
         line.setLineNo(no);
         line.setDescription("line " + no);
         return line;
+    }
+
+    /** A real invoice from the sample batch, so the manual extractor has something to read. */
+    private static MockMultipartFile realPdf(String fileName) throws IOException {
+        return realPdf(fileName, fileName);
+    }
+
+    private static MockMultipartFile realPdf(String fileName, String uploadedAs) throws IOException {
+        byte[] bytes = java.nio.file.Files.readAllBytes(java.nio.file.Path.of("../data/incoming_invoices", fileName));
+        return new MockMultipartFile("file", uploadedAs, "application/pdf", bytes);
     }
 
     private void waitForStatus(String invoiceId, InvoiceStatus expected) {

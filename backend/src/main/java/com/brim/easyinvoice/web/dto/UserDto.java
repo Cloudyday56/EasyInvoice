@@ -16,9 +16,7 @@ public record UserDto(
         String managerId,
         Role role,
         String sourceRole,
-        boolean readOnly,
         BigDecimal approvalLimitCad,
-        BigDecimal releaseLimitCad,
         UserStatus status,
         String delegateUserId,
         String workProvince,
@@ -29,8 +27,8 @@ public record UserDto(
 
     public static UserDto from(User u) {
         return new UserDto(u.getId(), u.getFullName(), u.getEmail(), u.getTitle(), u.getDepartmentId(),
-                u.getManagerId(), u.getRole(), u.getSourceRole(), u.isReadOnly(), u.getApprovalLimitCad(),
-                u.getReleaseLimitCad(), u.getStatus(), u.getDelegateId(), u.getWorkProvince(), u.getStatusSince(),
+                u.getManagerId(), u.getRole(), u.getSourceRole(), u.getApprovalLimitCad(),
+                u.getStatus(), u.getDelegateId(), u.getWorkProvince(), u.getStatusSince(),
                 u.getHireDate(), u.isActive(), u.isOnLeave());
     }
 }

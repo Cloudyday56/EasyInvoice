@@ -37,12 +37,9 @@ public class User extends BaseEntity<String> {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role;
-    private String sourceRole;      // role as written in users.csv (ap_clerk, auditor...)
-    private boolean readOnly;       // auditor: an Admin who can only look
+    private String sourceRole;      // role as written in users.csv (finance_manager and controller_admin are both ADMIN)
     @Column(precision = 14, scale = 2)
     private BigDecimal approvalLimitCad;
-    @Column(precision = 14, scale = 2)
-    private BigDecimal releaseLimitCad;
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private UserStatus status = UserStatus.ACTIVE;

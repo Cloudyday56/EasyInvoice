@@ -54,7 +54,7 @@ public class LlmClient {
      */
     public String chat(List<Map<String, Object>> messages) {
         if (!isConfigured()) {
-            throw new IllegalStateException("OPENROUTER_API_KEY is not set (add it to the .env file)");
+            throw new IllegalStateException("LLM_API_KEY is not set (add it to the .env file)");
         }
         ChatResponse response = http.post()
                 .uri("/chat/completions")

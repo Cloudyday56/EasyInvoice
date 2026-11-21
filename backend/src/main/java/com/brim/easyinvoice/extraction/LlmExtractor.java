@@ -83,9 +83,7 @@ public class LlmExtractor implements Extractor {
     private static Map<String, Object> filePart(SourceDocument document, byte[] bytes) {
         String base64 = Base64.getEncoder().encodeToString(bytes);
         String dataUrl = "data:" + document.getContentType() + ";base64," + base64;
-        if ("application/pdf".equals(document.getContentType())) {
-            return Map.of("type", "file", "file", Map.of("filename", document.getFileName(), "file_data", dataUrl));
-        }
+        // Gemini's OpenAI-compatible endpoint takes PDFs and images alike as an image_url data URI.
         return Map.of("type", "image_url", "image_url", Map.of("url", dataUrl));
     }
 }

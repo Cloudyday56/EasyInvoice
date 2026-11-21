@@ -262,24 +262,19 @@ public class SeedLoader {
 
     // ---------- per-table conversions ----------
 
-    /** users.csv has 6 roles; we keep 3. Admin = AP clerk + finance manager + controller (+ read-only auditor). */
+    /**
+     * users.csv has 6 roles; the app has 3. AP clerks and the auditor become Employees (they request invoices
+     * and have no approval or release authority); finance manager and controller become Admins.
+     */
     static Map<String, Object> userRow(Map<String, String> row) {
         Map<String, Object> out = rename(row, "user_id", "id");
         String sourceRole = row.get("role");
         out.put("source_role", sourceRole);
         out.put("role", switch (sourceRole) {
-            case "employee" -> "EMPLOYEE";
             case "approver" -> "APPROVER";
-            case "ap_clerk", "finance_manager", "controller_admin", "auditor" -> "ADMIN";
+            case "finance_manager", "controller_admin" -> "ADMIN";
+            case "employee", "ap_clerk", "auditor" -> "EMPLOYEE";
             default -> throw new IllegalArgumentException("Unknown role in users.csv: " + sourceRole);
-        });
-        out.put("read_only", "auditor".equals(sourceRole));
-        // Release limits from approval_policies.csv: P09 finance manager up to $100k, P10 controller above.
-        // AP clerks prepare but cannot release, so their limit is 0.
-        out.put("release_limit_cad", switch (sourceRole) {
-            case "controller_admin" -> row.get("approval_limit_cad");
-            case "finance_manager" -> "100000";
-            default -> "0";
         });
         return out;
     }

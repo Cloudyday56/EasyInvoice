@@ -21,7 +21,7 @@ import java.util.Optional;
 
 /**
  * Job: make the data comparable and match it to the vendor master.
- * Partly real: exact legal-name match, canonical invoice number, USD->CAD.
+ * Partly real: GST/HST number then exact legal-name match, canonical invoice number, USD->CAD.
  */
 @Component
 public class VendorMatchNode implements Node {
@@ -43,13 +43,24 @@ public class VendorMatchNode implements Node {
 
     @Override
     public StageResult run(Invoice invoice, NodeContext ctx) {
-        // TODO: match by GST/BN number first, then legal name, then fuzzy name (trigram) + sender domain.
-        Optional<Vendor> match = invoice.getVendorNameRaw() == null
+        // GST/HST number first (it is unique and survives name variations), then the legal name.
+        // TODO: fuzzy name (trigram) + sender domain.
+        Optional<Vendor> byGst = invoice.getVendorGstNumberRaw() == null
                 ? Optional.empty()
+                : vendors.findFirstByGstHstNumber(invoice.getVendorGstNumberRaw().strip());
+        Optional<Vendor> match = byGst.isPresent() || invoice.getVendorNameRaw() == null
+                ? byGst
                 : vendors.findFirstByLegalNameIgnoreCase(invoice.getVendorNameRaw());
+        if (byGst.isEmpty() && match.isPresent() && invoice.getVendorGstNumberRaw() != null
+                && match.get().getGstHstNumber() != null
+                && !match.get().getGstHstNumber().equalsIgnoreCase(invoice.getVendorGstNumberRaw().strip())) {
+            return StageResult.block(HoldQueue.VENDOR_HOLD, "GST_MISMATCH",
+                    "Name matches " + match.get().getLegalName() + " but the GST/HST number "
+                            + invoice.getVendorGstNumberRaw() + " is not the one on file");
+        }
         if (match.isEmpty()) {
             return StageResult.block(HoldQueue.VENDOR_HOLD, "NO_VENDOR_MATCH",
-                    "No vendor named \"" + invoice.getVendorNameRaw() + "\"");
+                    "No vendor with GST/HST " + invoice.getVendorGstNumberRaw() + " or named \"" + invoice.getVendorNameRaw() + "\"");
         }
         Vendor vendor = match.get();
         if (!vendor.isActive()) {
@@ -80,7 +91,7 @@ public class VendorMatchNode implements Node {
         patch.put("canonicalInvoiceNumber", canonical);
         patch.put("fxRateToCad", rate);
         patch.put("totalCad", invoice.getTotal().multiply(rate).setScale(2, RoundingMode.HALF_UP));
-        // TODO: date sanity (future / over a year old), credit notes negative, default GL coding from vendor.
+        // TODO: date sanity (future / over a year old), default GL coding from vendor.
         return StageResult.pass("Matched " + vendor.getLegalName() + " (" + vendor.getId() + ")", patch);
     }
 }

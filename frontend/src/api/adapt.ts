@@ -63,7 +63,7 @@ export function toPerson(user: UserDto): Person {
 
 export function roleLabel(user: UserDto) {
   const role = user.role === 'ADMIN' ? 'Admin' : user.role === 'APPROVER' ? 'Approver' : 'Employee'
-  return [user.title, role, user.readOnly ? 'read-only' : null, user.onLeave ? 'on leave' : null]
+  return [user.title, role, user.onLeave ? 'on leave' : null]
     .filter(Boolean)
     .join(' · ')
 }

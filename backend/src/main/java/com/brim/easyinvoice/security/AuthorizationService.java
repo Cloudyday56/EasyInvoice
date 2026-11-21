@@ -10,7 +10,6 @@ import com.brim.easyinvoice.model.User;
 import com.brim.easyinvoice.repo.ApprovalStepRepository;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -68,9 +67,6 @@ public class AuthorizationService {
         if (!user.isActive()) {
             return Decision.deny("User " + user.getId() + " is no longer active");
         }
-        if (user.isReadOnly() && action.changesData()) {
-            return Decision.deny("Read-only users (auditor) cannot change anything");
-        }
         return switch (action) {
             case VIEW_INVOICE -> canViewInvoice(user, invoice, steps);
             case UPLOAD_INVOICE -> user.getRole() == Role.EMPLOYEE || user.getRole() == Role.ADMIN
@@ -124,11 +120,21 @@ public class AuthorizationService {
                 && !Objects.equals(user.getDepartmentId(), invoice.getDepartmentId())) {
             return Decision.deny("Invoice belongs to another department");
         }
-        // Limit read from the user row at the moment of the action (never cached).
-        if (invoice.getTotalCad() == null) {
-            return Decision.deny("Invoice amount is unknown");
+        // Separation of duties: one person never signs two steps of the same invoice.
+        boolean alreadyApproved = steps.stream().anyMatch(s -> s.isApproved() && user.getId().equals(s.getActedById()));
+        if (alreadyApproved) {
+            return Decision.deny("You already approved a step of this invoice");
         }
-        if (invoice.getTotalCad().compareTo(user.getApprovalLimitCad()) > 0) {
+        // Limit read from the user row at the moment of the action (never cached). An Approver is always
+        // capped; an Admin in the middle of a chain (finance manager before the controller) signs a tier
+        // and is only capped on the last step. Credit notes are negative, so compare the size of the amount.
+        if (invoice.getTotalCad() == null || user.getApprovalLimitCad() == null) {
+            return Decision.deny("Invoice amount or your approval limit is unknown");
+        }
+        boolean lastStep = steps.stream().noneMatch(s -> s.getStepNo() > current.get().getStepNo()
+                && (s.isPending() || s.isApproved()));
+        if ((user.getRole() == Role.APPROVER || lastStep)
+                && invoice.getTotalCad().abs().compareTo(user.getApprovalLimitCad()) > 0) {
             return Decision.deny("Amount " + invoice.getTotalCad() + " CAD is above your approval limit of "
                     + user.getApprovalLimitCad());
         }
@@ -154,18 +160,11 @@ public class AuthorizationService {
         if (invoice.getStatus() != InvoiceStatus.SCHEDULED) {
             return Decision.deny("Payment is not scheduled (invoice status " + invoice.getStatus() + ")");
         }
-        // Separation of duties #2: whoever approved any step cannot release the payment.
-        boolean approvedAStep = steps.stream()
-                .anyMatch(s -> s.isApproved() && user.getId().equals(s.getActedById()));
+        // Separation of duties: whoever approved a step (or was stood in for by a delegate who did) cannot release.
+        boolean approvedAStep = steps.stream().anyMatch(s -> s.isApproved()
+                && (user.getId().equals(s.getActedById()) || user.getId().equals(s.getActingForId())));
         if (approvedAStep) {
             return Decision.deny("Approver cannot release: you approved a step of this invoice");
-        }
-        BigDecimal amount = invoice.getTotalCad();
-        if (amount == null) {
-            return Decision.deny("Invoice amount is unknown");
-        }
-        if (amount.compareTo(user.getReleaseLimitCad()) > 0) {
-            return Decision.deny("Amount " + amount + " CAD is above your release limit of " + user.getReleaseLimitCad());
         }
         return Decision.allow();
     }
