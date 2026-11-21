@@ -1,0 +1,95 @@
+package com.brim.easyinvoice.pipeline.nodes;
+
+import com.brim.easyinvoice.model.Invoice;
+import com.brim.easyinvoice.model.Payment;
+import com.brim.easyinvoice.notify.NotificationService;
+import com.brim.easyinvoice.payments.BankAdapter;
+import com.brim.easyinvoice.payments.BankStatus;
+import com.brim.easyinvoice.pipeline.HoldQueue;
+import com.brim.easyinvoice.pipeline.Node;
+import com.brim.easyinvoice.pipeline.NodeContext;
+import com.brim.easyinvoice.pipeline.NodeName;
+import com.brim.easyinvoice.pipeline.StageResult;
+import com.brim.easyinvoice.repo.PaymentRepository;
+import org.springframework.stereotype.Component;
+
+import java.util.concurrent.ThreadLocalRandom;
+
+/**
+ * Job: send the released payment to the bank and confirm it settled.
+ * The Admin's "Release" click (HumanActionService.release) marks the payment RELEASED and
+ * queues this node. Then, one step per run:
+ *   SCHEDULED -> wait for an Admin to release
+ *   RELEASED  -> send to the (mock) bank, check back in 2 s
+ *   SENT      -> ask the bank; SETTLED -> PASS (invoice becomes PAID), FAILED -> Payment exceptions
+ *
+ * TODO card flow: mock card network authorizes only if amount and merchant match; on decline fall back to EFT once.
+ */
+@Component
+public class PaymentReleaseNode implements Node {
+
+    private static final int RECHECK_SECONDS = 2;
+
+    private final PaymentRepository payments;
+    private final BankAdapter bank;
+    private final NotificationService notifications;
+
+    public PaymentReleaseNode(PaymentRepository payments, BankAdapter bank, NotificationService notifications) {
+        this.payments = payments;
+        this.bank = bank;
+        this.notifications = notifications;
+    }
+
+    @Override
+    public NodeName name() {
+        return NodeName.PAYMENT_RELEASE;
+    }
+
+    @Override
+    public StageResult run(Invoice invoice, NodeContext ctx) {
+        Payment payment = payments.activeForInvoice(invoice.id()).orElse(null);
+        if (payment == null) {
+            return StageResult.block(HoldQueue.PAYMENT_EXCEPTIONS, "NO_PAYMENT", "No payment exists for this invoice");
+        }
+
+        switch (payment.status()) {
+            case "SCHEDULED":
+                return StageResult.waitForHuman("Payment " + payment.id() + " is waiting for an Admin to release it");
+
+            case "RELEASED":
+                if ("CARD".equals(payment.method())) {
+                    String last4 = String.format("%04d", ThreadLocalRandom.current().nextInt(10000));
+                    payments.issueVirtualCard(payment.id(), "**** **** **** " + last4, payment.amount(),
+                            payment.vendorId());
+                }
+                String reference = bank.send(payment);
+                payments.markSent(payment.id(), reference);
+                return StageResult.recheckIn(RECHECK_SECONDS, "Sent to bank, reference " + reference);
+
+            case "SENT":
+                BankStatus status = bank.status(payment.id());
+                if (status == BankStatus.SETTLED) {
+                    payments.markSettled(payment.id());
+                    notifications.notify(invoice.requesterUserId(), "payment_settled", invoice.id(),
+                            "Payment for " + invoice.id() + " settled");
+                    return StageResult.pass("Payment " + payment.id() + " settled");
+                }
+                if (status == BankStatus.FAILED) {
+                    payments.markFailed(payment.id(), "Bank reported failure");
+                    return StageResult.block(HoldQueue.PAYMENT_EXCEPTIONS, "PAYMENT_FAILED",
+                            "Bank rejected payment " + payment.id());
+                }
+                if (status == BankStatus.UNKNOWN) {
+                    bank.send(payment); // the mock forgot it (restart): re-send, same idempotency key
+                }
+                return StageResult.recheckIn(RECHECK_SECONDS, "Waiting for settlement");
+
+            case "SETTLED":
+                return StageResult.pass("Payment " + payment.id() + " already settled");
+
+            default:
+                return StageResult.block(HoldQueue.PAYMENT_EXCEPTIONS, "UNEXPECTED_PAYMENT_STATUS",
+                        "Payment " + payment.id() + " is " + payment.status());
+        }
+    }
+}
