@@ -293,29 +293,11 @@ export default function App() {
 
   const actionsFor = (invoice: Invoice | null): { primary: PanelAction; secondary: PanelAction[] } | null => {
     if (!invoice) return null
-    const detail = invoice.detail
     const amount = formatMoney(invoice.amount, invoice.currency)
     const status = invoice.raw.status
     const id = invoice.id
 
-    if (!detail) {
-      // Closed invoices need nothing from the detail to be labelled, so show the final label right away
-      // instead of flashing "Loading…" first.
-      const closed = closedLabel(status)
-      if (closed) {
-        return {
-          primary: {
-            label: closed,
-            tone: status === 'PAID' ? 'success' : 'dark',
-            kind: status === 'PAID' ? 'paid' : 'info',
-            disabled: true,
-          },
-          secondary: [],
-        }
-      }
-      return { primary: { label: 'Loading…', tone: 'dark', kind: 'approve', disabled: true }, secondary: [] }
-    }
-    const allowed = detail.allowedActions
+    const allowed = invoice.raw.allowedActions
     const secondary: PanelAction[] = []
 
     if (allowed.includes('APPROVE_INVOICE')) {
@@ -409,24 +391,23 @@ export default function App() {
     }
 
     if (allowed.includes('RELEASE_PAYMENT')) {
-      const payment = detail.payments.find((p) => p.status === 'SCHEDULED')
+      const paymentId = invoice.raw.scheduledPaymentId
       return {
         primary: {
           label: `Release payment (${amount})`,
           tone: 'success',
           kind: 'release',
-          disabled: busy || !payment,
+          disabled: busy || !paymentId,
           onClick: () =>
-            payment &&
-            run(() => api.releasePayment(payment.id), `${invoice.supplier} payment released · sent to bank`, id),
+            paymentId &&
+            run(() => api.releasePayment(paymentId), `${invoice.supplier} payment released · sent to bank`, id),
         },
         secondary,
       }
     }
 
     // Nothing this user can do: explain why, using the backend's own state.
-    const waitingStep = detail.approvalSteps.find((s) => s.pending)
-    const waitingOn = waitingStep ? users.find((u) => u.id === waitingStep.assignedUserId)?.fullName : null
+    const waitingOn = users.find((u) => u.id === invoice.raw.waitingOnUserId)?.fullName
     const label =
       closedLabel(status) ??
       (status === 'SCHEDULED'

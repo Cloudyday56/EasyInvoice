@@ -13,6 +13,9 @@ import com.brim.easyinvoice.intake.IntakeService;
 import com.brim.easyinvoice.model.ApprovalStep;
 import com.brim.easyinvoice.model.DocumentChannel;
 import com.brim.easyinvoice.model.Invoice;
+import com.brim.easyinvoice.model.PaymentStatus;
+import com.brim.easyinvoice.model.Payment;
+import com.brim.easyinvoice.model.Flag;
 import com.brim.easyinvoice.model.SourceDocument;
 import com.brim.easyinvoice.model.User;
 import com.brim.easyinvoice.pipeline.HumanActionService;
@@ -108,10 +111,22 @@ public class InvoiceController {
     public List<InvoiceDto> list(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId) {
         User user = currentUser.require(userId);
         Map<String, List<ApprovalStep>> stepsByInvoice = steps.allGroupedByInvoice();
+        Map<String, List<Flag>> flagsByInvoice = flags.allGroupedByInvoice();
         return invoices.findAllByOrderByCreatedAtDescIdDesc().stream()
                 .filter(inv -> authorization.canView(user, inv, stepsByInvoice.getOrDefault(inv.getId(), List.of())))
-                .map(InvoiceDto::from)
+                .map(inv -> summarize(user, inv, stepsByInvoice.getOrDefault(inv.getId(), List.of()),
+                        flagsByInvoice.getOrDefault(inv.getId(), List.of())))
                 .toList();
+    }
+
+    /** The invoice row plus what the UI needs before the detail loads: flags, this user's actions, who is up next. */
+    private InvoiceDto summarize(User user, Invoice invoice, List<ApprovalStep> invoiceSteps, List<Flag> invoiceFlags) {
+        return InvoiceDto.from(invoice).with(
+                invoiceFlags.stream().map(FlagDto::from).toList(),
+                authorization.allowedActions(user, invoice, invoiceSteps).stream().map(Enum::name).toList(),
+                AuthorizationService.currentStep(invoiceSteps).map(ApprovalStep::getAssignedUserId).orElse(null),
+                invoice.getPayments().stream().filter(p -> p.getStatus() == PaymentStatus.SCHEDULED)
+                        .findFirst().map(Payment::getId).orElse(null));
     }
 
     @GetMapping("/{id}")
@@ -125,9 +140,10 @@ public class InvoiceController {
         List<ApprovalStep> invoiceSteps = steps.forInvoice(id);
         List<AuditEvent> events = audit.forInvoice(id);
         SourceDocument doc = invoice.getSourceDocument();
-        return new InvoiceDetail(InvoiceDto.from(invoice),
+        List<Flag> invoiceFlags = flags.findByInvoice_IdOrderById(id);
+        return new InvoiceDetail(summarize(user, invoice, invoiceSteps, invoiceFlags),
                 invoiceLines.findByInvoice_IdOrderByLineNo(id).stream().map(InvoiceLineDto::from).toList(),
-                flags.findByInvoice_IdOrderById(id).stream().map(FlagDto::from).toList(),
+                invoiceFlags.stream().map(FlagDto::from).toList(),
                 invoiceSteps.stream().map(ApprovalStepDto::from).toList(),
                 payments.findByInvoice_IdOrderById(id).stream().map(PaymentDto::from).toList(),
                 events, doc == null ? null : DocumentInfo.of(doc),

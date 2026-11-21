@@ -116,8 +116,9 @@ function pipelineState(dto: InvoiceDto): Invoice['pipeline'] {
   }
 }
 
-function paymentOf(dto: InvoiceDto, detail?: InvoiceDetail): PaymentMethod {
-  const payment = detail?.payments[detail.payments.length - 1]
+/** From the list row alone (the detail has no say), so the method cannot change when the detail loads. */
+function paymentOf(dto: InvoiceDto): PaymentMethod {
+  const payment = dto.paymentMethod ? { method: dto.paymentMethod, reference: dto.paymentReference } : null
   const locked = dto.holdQueue === 'FRAUD_HOLD'
   if (payment?.method === 'CARD') {
     return { kind: 'card', label: 'Brim card', detail: payment.reference ?? 'virtual card', locked }
@@ -128,12 +129,12 @@ function paymentOf(dto: InvoiceDto, detail?: InvoiceDetail): PaymentMethod {
   return { kind: 'eft', label: 'EFT', detail: payment?.reference ?? 'vendor account on file', locked }
 }
 
-function flagsOf(dto: InvoiceDto, detail?: InvoiceDetail): InvoiceFlag[] {
+function flagsOf(dto: InvoiceDto): InvoiceFlag[] {
   const flags = new Set<InvoiceFlag>()
   if (dto.holdQueue === 'FRAUD_HOLD' || (dto.riskScore ?? 0) >= 40) flags.add('fraud')
   if (isOnHold(dto.status) && dto.holdQueue !== 'FRAUD_HOLD') flags.add('critical')
-  if (detail?.flags.some((f) => f.severity === 'BLOCK' && !f.overriddenBy)) flags.add('critical')
-  if (detail?.flags.some((f) => /FRAUD|BANK/i.test(f.code) && !f.overriddenBy)) flags.add('fraud')
+  if (dto.flags.some((f) => f.severity === 'BLOCK' && !f.overriddenBy)) flags.add('critical')
+  if (dto.flags.some((f) => /FRAUD|BANK/i.test(f.code) && !f.overriddenBy)) flags.add('fraud')
   if (dto.dueDate && !isTerminal(dto.status)) {
     const [y, m, d] = dto.dueDate.split('-').map(Number)
     if (new Date(y, m - 1, d).getTime() < Date.now()) flags.add('overdue')
@@ -146,9 +147,9 @@ function summaryOf(dto: InvoiceDto, detail?: InvoiceDetail): string {
   if (dto.holdQueue) {
     parts.push(`Parked in ${HOLD_LABELS[dto.holdQueue] ?? dto.holdQueue}${dto.holdReason ? `: ${dto.holdReason}` : '.'}`)
   }
-  const open = detail?.flags.filter((f) => !f.overriddenBy) ?? []
+  const open = dto.flags.filter((f) => !f.overriddenBy)
   for (const f of open.slice(0, 4)) parts.push(`${f.severity === 'BLOCK' ? 'Blocked' : 'Flag'} (${f.code}): ${f.message}`)
-  const overridden = detail?.flags.filter((f) => f.overriddenBy) ?? []
+  const overridden = dto.flags.filter((f) => f.overriddenBy)
   if (overridden.length) parts.push(`${overridden.length} flag(s) overridden by an Admin.`)
   const pending = detail?.approvalSteps.find((s) => s.pending)
   if (dto.status === 'PENDING_APPROVAL' && pending) {
@@ -186,7 +187,7 @@ export function toInvoice(
     dto.documentType?.replace(/_/g, ' ').toLowerCase(),
     doc?.channel === 'EMAIL' ? 'Email' : doc?.channel === 'UPLOAD' ? 'Upload' : null,
     dto.holdQueue ? HOLD_LABELS[dto.holdQueue] : null,
-    ...(detail?.flags.map((f) => f.code) ?? []),
+    ...dto.flags.map((f) => f.code),
   ].filter((t): t is string => Boolean(t))
 
   return {
@@ -195,7 +196,8 @@ export function toInvoice(
     supplierEmail: doc?.sender ?? '',
     supplierInitials: initials(supplier),
     avatarClass: avatarClass(dto.vendorId ?? supplier),
-    subject: doc?.subject ?? doc?.fileName ?? `Invoice ${invoiceNumber}`,
+    // Built from list data only: using the document here made the title change when the detail finished loading.
+    subject: `Invoice ${invoiceNumber}`,
     invoiceNumber,
     amount: dto.total ?? 0,
     currency,
@@ -205,14 +207,14 @@ export function toInvoice(
     receivedAt: Math.max(0, (now - createdMs) / 60_000),
     requester: requesterUser ? toPerson(requesterUser) : null,
     tags: [...new Set(tags)],
-    flags: flagsOf(dto, detail),
+    flags: flagsOf(dto),
     status: STATUS_MAP[dto.status] ?? 'Processing',
     summary: summaryOf(dto, detail),
     body: doc?.body ?? (doc?.channel === 'UPLOAD' ? 'Uploaded directly through the AP portal.' : 'No email body.'),
     dueDate: formatDate(dto.dueDate),
     invoiceDate: formatDate(dto.invoiceDate),
     paymentTerms: dto.invoiceDate && dto.dueDate ? termsOf(dto.invoiceDate, dto.dueDate) : '—',
-    payment: paymentOf(dto, detail),
+    payment: paymentOf(dto),
     lineItems:
       detail?.lines.map((l) => ({
         description: l.description ?? `Line ${l.lineNo}`,

@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
@@ -118,6 +119,7 @@ public class Invoice extends BaseEntity<String> {
 
     @OneToMany(mappedBy = "invoice")
     @OrderBy("id")
+    @BatchSize(size = 100)   // the invoice list reads every invoice's payment: a few queries, not one each
     private List<Payment> payments = new ArrayList<>();
 
     @PrePersist

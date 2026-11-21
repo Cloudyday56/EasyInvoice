@@ -68,6 +68,12 @@ export interface InvoiceDto {
   holdReason: string | null
   resumeNode: string | null
   currentNode: string | null
+  paymentMethod: string | null
+  paymentReference: string | null
+  flags: FlagDto[]
+  allowedActions: Action[]
+  waitingOnUserId: string | null
+  scheduledPaymentId: string | null
   createdAt: string | null
   updatedAt: string | null
 }
