@@ -23,7 +23,7 @@ app:
     max-attempts: 3
   bank:
     settle-after-ms: 4000  # mock bank: SENT -> SETTLED after this delay
-  extractor: ${EXTRACTOR:fake}   # fake | llm
+  extractor: ${EXTRACTOR:llm}   # fake | llm
   llm:
     base-url: ${LLM_BASE_URL:https://openrouter.ai/api/v1}
     api-key: ${OPENROUTER_API_KEY:}  # never hard-code; set it in the root .env file

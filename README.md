@@ -7,8 +7,13 @@ hash-chained audit trail at every step.
 ```
 backend/    Java 21 · Spring Boot 4 · Spring Data JPA (Hibernate) · PostgreSQL
 frontend/   React + JavaScript · Vite
-data/       sample dataset (CSV history, inbox emails, incoming invoice files)
+data/       sample dataset (CSV history, inbox emails, incoming invoice files): NOT in git, see below
 ```
+
+## Sample data (not in git)
+
+`data/` is git-ignored. Copy the `brim_datasets` folder contents into `data/` before running, so that
+`data/data/users.csv`, `data/inbox/emails.json` and `data/incoming_invoices/` exist. Without it the database starts empty.
 
 ## Run it (one command)
 

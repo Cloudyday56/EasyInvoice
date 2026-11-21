@@ -1,12 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ArrowLeft,
+  Ban,
   Check,
+  CircleDashed,
+  Clock,
+  Loader2,
+  Undo2,
   ChevronDown,
   CreditCard,
   Download,
   FileText,
-  Flag,
   Landmark,
   Mail,
   MoreHorizontal,
@@ -19,17 +23,29 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { Invoice } from '../types'
+import type { NodeProgress, UserDto } from '../api/client'
 import { formatMoney } from '../lib/format'
 import { cn } from '../lib/cn'
 import { InvoiceDocument } from './InvoiceDocument'
 import { Avatar, RiskPill, StatusPill } from './ui'
 
+export type PanelActionKind = 'approve' | 'release' | 'resolve' | 'reject' | 'return' | 'paid' | 'info'
+
+export interface PanelAction {
+  label: string
+  tone: 'dark' | 'danger' | 'success'
+  kind: PanelActionKind
+  disabled?: boolean
+  onClick?: () => void
+}
+
 interface PreviewPanelProps {
   invoice: Invoice | null
+  users: UserDto[]
+  primary: PanelAction | null
+  secondary: PanelAction[]
   onBack: () => void
-  onPrimaryAction: () => void
   onAssign: (team: string) => void
-  onFlag: () => void
   onReply: (message: string) => void
   onDownload: () => void
   onAudit: () => void
@@ -37,42 +53,23 @@ interface PreviewPanelProps {
 
 const teams = ['AP Team', 'Treasury', 'Procurement', 'Risk & Fraud']
 
-type ActionTone = 'dark' | 'danger' | 'success'
-
-interface ActionConfig {
-  label: string
-  icon: LucideIcon
-  tone: ActionTone
-}
-
-function primaryAction(invoice: Invoice): ActionConfig {
-  const amount = formatMoney(invoice.amount, invoice.currency)
-
-  if (invoice.status === 'Paid') {
-    return { label: 'Paid · View receipt', icon: Check, tone: 'success' }
-  }
-  if (invoice.flags.includes('fraud')) {
-    return { label: 'Hold & Verify Vendor', icon: ShieldAlert, tone: 'danger' }
-  }
-  if (invoice.status === 'On hold' || invoice.flags.includes('critical')) {
-    return { label: 'Resolve Exception', icon: ShieldAlert, tone: 'danger' }
-  }
-  if (invoice.status === 'Approved' || invoice.status === 'Scheduled') {
-    return { label: `Release Payment (${amount})`, icon: Check, tone: 'success' }
-  }
-  return {
-    label: `Approve & Pay with ${invoice.payment.kind === 'card' ? 'Card' : 'EFT'} (${amount})`,
-    icon: Check,
-    tone: 'dark',
-  }
+const actionIcons: Record<PanelActionKind, LucideIcon> = {
+  approve: Check,
+  release: Check,
+  resolve: ShieldAlert,
+  reject: Ban,
+  return: Undo2,
+  paid: Check,
+  info: Clock,
 }
 
 export function PreviewPanel({
   invoice,
+  users,
+  primary,
+  secondary,
   onBack,
-  onPrimaryAction,
   onAssign,
-  onFlag,
   onReply,
   onDownload,
   onAudit,
@@ -89,7 +86,7 @@ export function PreviewPanel({
     setReplyText('')
   }, [invoice?.id])
 
-  const action = useMemo(() => (invoice ? primaryAction(invoice) : null), [invoice])
+  const action = primary
 
   if (!invoice || !action) {
     return (
@@ -108,7 +105,7 @@ export function PreviewPanel({
     )
   }
 
-  const ActionIcon = action.icon
+  const ActionIcon = actionIcons[action.kind]
   const paymentLocked = Boolean(invoice.payment.locked)
   const PaymentIcon = paymentLocked
     ? ShieldAlert
@@ -214,6 +211,43 @@ export function PreviewPanel({
               ))}
             </div>
           </div>
+
+          {invoice.detail && (
+            <PipelineTracker nodes={invoice.detail.pipeline} />
+          )}
+
+          {invoice.detail && invoice.detail.approvalSteps.length > 0 && (
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <h3 className="text-[12px] font-bold text-slate-900">Approval chain</h3>
+              <ol className="mt-2 space-y-1.5">
+                {invoice.detail.approvalSteps.map((step) => {
+                  const name = (id: string | null) => users.find((u) => u.id === id)?.fullName ?? id ?? 'unassigned'
+                  return (
+                    <li key={step.id} className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-[9.5px] font-bold text-slate-500">
+                        {step.stepNo}
+                      </span>
+                      <span className="font-semibold text-slate-800">{name(step.assignedUserId)}</span>
+                      {step.actingFor && <span className="text-slate-400">acting for {name(step.actingFor)}</span>}
+                      {step.reason && <span className="text-slate-400">· {step.reason}</span>}
+                      <span
+                        className={cn(
+                          'ml-auto rounded-full px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wide',
+                          step.approved
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : step.pending
+                              ? 'bg-sky-50 text-sky-700'
+                              : 'bg-rose-50 text-rose-700',
+                        )}
+                      >
+                        {step.status.toLowerCase()}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ol>
+            </div>
+          )}
 
           <div className="grid grid-cols-[repeat(auto-fit,minmax(132px,1fr))] gap-2">
             <Fact label="Amount" value={formatMoney(invoice.amount, invoice.currency)} />
@@ -382,7 +416,9 @@ export function PreviewPanel({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={onPrimaryAction}
+              onClick={action.onClick}
+              disabled={action.disabled || !action.onClick}
+              title={action.label}
               className={cn(
                 'action-primary',
                 action.tone === 'danger' && 'action-primary--danger',
@@ -435,9 +471,20 @@ export function PreviewPanel({
             >
               <Reply size={14} /> Reply
             </button>
-            <button type="button" onClick={onFlag} className="action-secondary">
-              <Flag size={14} /> Hold
-            </button>
+            {secondary.map((item) => {
+              const Icon = actionIcons[item.kind]
+              return (
+                <button
+                  key={item.kind}
+                  type="button"
+                  onClick={item.onClick}
+                  disabled={item.disabled}
+                  className={cn('action-secondary', item.tone === 'danger' && 'text-rose-600')}
+                >
+                  <Icon size={14} /> {item.label}
+                </button>
+              )
+            })}
             <span className="ml-auto hidden items-center gap-1.5 text-[10.5px] font-medium text-slate-400 xl:flex">
               Received {invoice.received}
             </span>
@@ -500,5 +547,67 @@ function TabButton({
         <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-sky-600" />
       )}
     </button>
+  )
+}
+
+const nodeStateStyles: Record<NodeProgress['state'], { dot: string; text: string }> = {
+  pending: { dot: 'bg-slate-200 text-slate-400', text: 'text-slate-400' },
+  running: { dot: 'bg-sky-500 text-white', text: 'text-sky-700' },
+  done: { dot: 'bg-emerald-500 text-white', text: 'text-slate-700' },
+  flagged: { dot: 'bg-amber-400 text-white', text: 'text-amber-700' },
+  blocked: { dot: 'bg-rose-500 text-white', text: 'text-rose-700' },
+  waiting: { dot: 'bg-sky-100 text-sky-600 ring-1 ring-sky-300', text: 'text-sky-700' },
+  retrying: { dot: 'bg-orange-400 text-white', text: 'text-orange-700' },
+  ignored: { dot: 'bg-slate-300 text-white', text: 'text-slate-500' },
+}
+
+function PipelineTracker({ nodes }: { nodes: NodeProgress[] }) {
+  const done = nodes.filter((n) => n.state === 'done' || n.state === 'flagged').length
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-[12px] font-bold text-slate-900">Pipeline</h3>
+        <span className="text-[10.5px] font-semibold text-slate-400">
+          {done}/{nodes.length} nodes
+        </span>
+      </div>
+      <ol className="mt-3 grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2">
+        {nodes.map((node, index) => {
+          const style = nodeStateStyles[node.state] ?? nodeStateStyles.pending
+          const Icon =
+            node.state === 'done'
+              ? Check
+              : node.state === 'running' || node.state === 'retrying'
+                ? Loader2
+                : node.state === 'blocked'
+                  ? ShieldAlert
+                  : node.state === 'waiting'
+                    ? Clock
+                    : node.state === 'pending'
+                      ? null
+                      : CircleDashed
+          return (
+            <li key={node.node} className="flex min-w-0 items-start gap-2" title={node.message ?? undefined}>
+              <span
+                className={cn(
+                  'mt-px flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[9px] font-bold',
+                  style.dot,
+                )}
+              >
+                {Icon ? (
+                  <Icon size={10} strokeWidth={3} className={node.state === 'running' ? 'animate-spin' : undefined} />
+                ) : (
+                  index + 1
+                )}
+              </span>
+              <div className="min-w-0">
+                <p className={cn('truncate text-[11px] font-semibold', style.text)}>{node.label}</p>
+                {node.message && <p className="truncate text-[10px] text-slate-400">{node.message}</p>}
+              </div>
+            </li>
+          )
+        })}
+      </ol>
+    </div>
   )
 }

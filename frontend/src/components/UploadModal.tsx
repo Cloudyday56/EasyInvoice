@@ -4,11 +4,12 @@ import { cn } from '../lib/cn'
 
 interface UploadModalProps {
   open: boolean
+  busy?: boolean
   onClose: () => void
-  onSubmit: (fileName: string | null) => void
+  onSubmit: (file: File | null) => void
 }
 
-export function UploadModal({ open, onClose, onSubmit }: UploadModalProps) {
+export function UploadModal({ open, busy = false, onClose, onSubmit }: UploadModalProps) {
   const [file, setFile] = useState<File | null>(null)
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -115,7 +116,7 @@ export function UploadModal({ open, onClose, onSubmit }: UploadModalProps) {
               Drag & drop your invoice
             </p>
             <p className="mt-1 text-[10.5px] font-medium text-slate-400">
-              PDF, PNG or JPG · up to 20 MB
+              PDF, PNG or JPG · up to 10 MB
             </p>
             <button
               type="button"
@@ -145,11 +146,12 @@ export function UploadModal({ open, onClose, onSubmit }: UploadModalProps) {
           </button>
           <button
             type="button"
-            onClick={() => onSubmit(file?.name ?? null)}
-            className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 text-[11.5px] font-semibold text-white shadow-lg shadow-sky-500/25 transition hover:brightness-105 active:scale-[0.98]"
+            onClick={() => onSubmit(file)}
+            disabled={!file || busy}
+            className="inline-flex disabled:cursor-not-allowed disabled:opacity-50 h-9 items-center gap-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 text-[11.5px] font-semibold text-white shadow-lg shadow-sky-500/25 transition hover:brightness-105 active:scale-[0.98]"
           >
             <UploadCloud size={14} />
-            {file ? 'Upload & process' : 'Process sample invoice'}
+            {busy ? 'Uploading…' : file ? 'Upload & process' : 'Choose a file first'}
           </button>
         </div>
       </div>

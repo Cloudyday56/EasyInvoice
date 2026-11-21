@@ -9,11 +9,13 @@ const billTo = {
   city: 'Toronto, ON M5J 0A8',
 }
 
+const provinceNames: Record<string, string> = {
+  AB: 'Alberta', BC: 'British Columbia', MB: 'Manitoba', NB: 'New Brunswick', NL: 'Newfoundland and Labrador',
+  NS: 'Nova Scotia', ON: 'Ontario', PE: 'Prince Edward Island', QC: 'Québec', SK: 'Saskatchewan',
+}
+
 function shipTo(invoice: Invoice) {
-  if (invoice.province.startsWith('Alberta')) return 'Calgary, AB'
-  if (invoice.province.startsWith('British Columbia')) return 'Vancouver, BC'
-  if (invoice.province.startsWith('Québec')) return 'Montréal, QC'
-  return 'Toronto, ON'
+  return provinceNames[invoice.province.toUpperCase()] ?? (invoice.province || 'Not stated')
 }
 
 export function InvoiceDocument({ invoice }: { invoice: Invoice }) {
@@ -42,7 +44,7 @@ export function InvoiceDocument({ invoice }: { invoice: Invoice }) {
             <div className="min-w-0">
               <p className="truncate text-[12px] font-extrabold text-slate-800">{invoice.supplier}</p>
               <p className="mt-0.5 truncate text-[9px] font-medium text-slate-400">
-                {invoice.province.startsWith('Québec')
+                {invoice.province.toUpperCase() === 'QC'
                   ? 'GST/QST No. 8234 5678 90 TQ0001'
                   : 'GST/HST No. 81234 5678 RT0001'}
               </p>
@@ -108,8 +110,15 @@ export function InvoiceDocument({ invoice }: { invoice: Invoice }) {
             </tr>
           </thead>
           <tbody>
-            {invoice.lineItems.map((item) => (
-              <tr key={item.description} className="border-b border-slate-100 last:border-0">
+            {invoice.lineItems.length === 0 && (
+              <tr>
+                <td colSpan={4} className="py-3 text-center text-[10px] text-slate-400">
+                  {invoice.detail ? 'No line items extracted yet.' : 'Loading…'}
+                </td>
+              </tr>
+            )}
+            {invoice.lineItems.map((item, index) => (
+              <tr key={`${index}-${item.description}`} className="border-b border-slate-100 last:border-0">
                 <td className="py-2 pr-3 text-[10px] font-medium leading-snug text-slate-600">
                   {item.description}
                 </td>

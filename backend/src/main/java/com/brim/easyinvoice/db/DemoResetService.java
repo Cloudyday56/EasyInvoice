@@ -70,6 +70,27 @@ public class DemoResetService {
         bank.clear();
     }
 
+    /** Invoice-side tables only, children first. Users, vendors, POs, contracts and other master data stay. */
+    private static final List<Class<?>> INVOICE_TABLES = List.of(
+            AuditEvent.class, AuditHead.class,
+            CardTransaction.class, VirtualCard.class, Job.class, Notification.class,
+            Payment.class, Flag.class, ApprovalStep.class, InvoiceLine.class,
+            Invoice.class, SourceDocument.class, InvoiceNumber.class, PaymentNumber.class);
+
+    /** Removes every invoice (seeded history and uploads) with its payments, flags, steps and audit trail. */
+    public void clearInvoices(User user) {
+        authorization.authorize(user, Action.RUN_ADMIN_TOOLS, null);
+        runner.pauseWhile(() -> transaction.executeWithoutResult(tx -> {
+            for (Class<?> entity : INVOICE_TABLES) {
+                entityManager.createQuery("delete from " + entity.getSimpleName()).executeUpdate();
+            }
+            entityManager.clear();
+            audit.record(Actor.of(user), null, null, "invoices.cleared", null, null, null,
+                    Map.of("by", user.getFullName()));
+        }));
+        bank.clear();
+    }
+
     private void deleteEverything() {
         // Users and departments point at each other (and users at users): cut those links first.
         entityManager.createQuery("update User u set u.manager = null, u.delegate = null, u.department = null")

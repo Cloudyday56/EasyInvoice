@@ -1,12 +1,18 @@
+import type { InvoiceDetail, InvoiceDto } from './api/client'
+
 export type InvoiceFlag = 'fraud' | 'critical' | 'overdue'
 
 export type InvoiceStatus =
+  | 'Processing'
   | 'Needs review'
   | 'Pending approval'
   | 'Approved'
   | 'Scheduled'
+  | 'Released'
   | 'Paid'
   | 'On hold'
+  | 'Rejected'
+  | 'Ignored'
 
 export type RiskTone = 'low' | 'medium' | 'high'
 
@@ -51,7 +57,7 @@ export interface Invoice {
   subject: string
   invoiceNumber: string
   amount: number
-  currency: 'CAD' | 'USD'
+  currency: string
   taxLabel: string
   taxAmount: number
   received: string
@@ -77,6 +83,10 @@ export interface Invoice {
     tone: RiskTone
   }
   approvedBy?: string
+  /** Raw backend row this view model was built from. */
+  raw: InvoiceDto
+  /** Full detail, loaded when the invoice is selected. */
+  detail?: InvoiceDetail
 }
 
 export type FilterId = 'action' | 'holds' | 'paid'

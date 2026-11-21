@@ -45,6 +45,13 @@ public class AdminController {
         return Map.of("status", "reset");
     }
 
+    /** Deletes every invoice but keeps users, vendors and other master data. */
+    @PostMapping("/clear-invoices")
+    public Map<String, String> clearInvoices(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId) {
+        demoReset.clearInvoices(currentUser.require(userId));
+        return Map.of("status", "cleared");
+    }
+
     @PostMapping("/poll-inbox")
     public Map<String, Integer> pollInbox(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId) {
         return intake.pollInbox(currentUser.require(userId));
