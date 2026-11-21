@@ -7,7 +7,6 @@ import {
   Clock,
   Loader2,
   Undo2,
-  ChevronDown,
   CreditCard,
   Download,
   FileText,
@@ -15,11 +14,7 @@ import {
   Landmark,
   Mail,
   Paperclip,
-  Reply,
-  Send,
   ShieldAlert,
-  UserPlus,
-  X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { Invoice } from '../types'
@@ -45,13 +40,9 @@ interface PreviewPanelProps {
   primary: PanelAction | null
   secondary: PanelAction[]
   onBack: () => void
-  onAssign: (team: string) => void
-  onReply: (message: string) => void
   onDownload: () => void
   onAudit: () => void
 }
-
-const teams = ['AP Team', 'Treasury', 'Procurement', 'Risk & Fraud']
 
 const approvalStatusLabels: Record<string, string> = {
   PENDING: 'Waiting',
@@ -77,21 +68,13 @@ export function PreviewPanel({
   primary,
   secondary,
   onBack,
-  onAssign,
-  onReply,
   onDownload,
   onAudit,
 }: PreviewPanelProps) {
   const [tab, setTab] = useState<'document' | 'email'>('document')
-  const [showAssign, setShowAssign] = useState(false)
-  const [replyOpen, setReplyOpen] = useState(false)
-  const [replyText, setReplyText] = useState('')
 
   useEffect(() => {
     setTab('document')
-    setShowAssign(false)
-    setReplyOpen(false)
-    setReplyText('')
   }, [invoice?.id])
 
   const action = primary
@@ -127,14 +110,6 @@ export function PreviewPanel({
       : 'EFT · BANK'
   const paymentValue = `${invoice.payment.label} ${invoice.payment.detail}`.trim()
 
-  const sendReply = () => {
-    const message = replyText.trim()
-    if (!message) return
-    onReply(message)
-    setReplyText('')
-    setReplyOpen(false)
-  }
-
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#F7F7F5]">
       <header className="flex h-[64px] shrink-0 items-center justify-between border-b border-[#E8E8E4] bg-white px-3 sm:px-5">
@@ -161,15 +136,6 @@ export function PreviewPanel({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
-          <button
-            type="button"
-            onClick={() => setReplyOpen(true)}
-            aria-label="Reply to supplier"
-            title="Reply to supplier"
-            className="icon-btn"
-          >
-            <Send size={16} />
-          </button>
           <button
             type="button"
             onClick={onDownload}
@@ -379,48 +345,6 @@ export function PreviewPanel({
 
       <footer data-preview-footer className="shrink-0 border-t border-slate-200 bg-white px-3 py-3 sm:px-6">
         <div className="mx-auto max-w-[860px]">
-          {replyOpen && (
-            <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-[11px] font-bold text-slate-700">
-                  Reply to {invoice.supplier}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setReplyOpen(false)}
-                  aria-label="Close reply"
-                  className="icon-btn"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-              <textarea
-                value={replyText}
-                onChange={(event) => setReplyText(event.target.value)}
-                rows={3}
-                placeholder="Ask the supplier to confirm the bank change or correct the invoice…"
-                className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] leading-relaxed text-slate-700 placeholder:text-slate-400 focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-100"
-              />
-              <div className="mt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setReplyOpen(false)}
-                  className="action-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={sendReply}
-                  disabled={!replyText.trim()}
-                  className="action-primary"
-                >
-                  <Send size={14} /> Send reply
-                </button>
-              </div>
-            </div>
-          )}
-
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -437,48 +361,6 @@ export function PreviewPanel({
               <span className="truncate">{action.label}</span>
             </button>
 
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowAssign((open) => !open)}
-                aria-expanded={showAssign}
-                className="action-secondary"
-              >
-                <UserPlus size={14} /> Assign <ChevronDown size={12} />
-              </button>
-              {showAssign && (
-                <div className="absolute bottom-[calc(100%+6px)] left-0 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-[0_12px_32px_-12px_rgba(15,23,42,0.25)]">
-                  {teams.map((team) => (
-                    <button
-                      key={team}
-                      type="button"
-                      onClick={() => {
-                        onAssign(team)
-                        setShowAssign(false)
-                      }}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
-                    >
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-50 text-[9px] font-bold text-sky-600">
-                        {team
-                          .split(' ')
-                          .map((part) => part[0])
-                          .join('')
-                          .slice(0, 2)}
-                      </span>
-                      {team}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setReplyOpen(true)}
-              className="action-secondary"
-            >
-              <Reply size={14} /> Reply
-            </button>
             <button type="button" onClick={onAudit} className="action-secondary">
               <History size={14} /> Audit trail
             </button>

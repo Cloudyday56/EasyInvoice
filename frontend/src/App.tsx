@@ -646,11 +646,6 @@ export default function App() {
               primary={panelActions?.primary ?? null}
               secondary={panelActions?.secondary ?? []}
               onBack={() => setMobileView('inbox')}
-              onAssign={(team) => notify(`Assigned to ${team} · notification sent`)}
-              onReply={(message) =>
-                selectedInvoice &&
-                notify(`Reply drafted to ${selectedInvoice.supplier} · ${message.length} characters`)
-              }
               onDownload={handleDownload}
               onAudit={openInvoiceAudit}
             />

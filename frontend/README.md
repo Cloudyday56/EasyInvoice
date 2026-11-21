@@ -46,7 +46,7 @@ That file mounts `nginx.host.conf`, which proxies `/api` to `host.docker.interna
 
 ```
 src/
-  App.tsx                    inbox state, filtering, approve/hold/release/reply flows
+  App.tsx                    inbox state, filtering, approve/hold/release flows
   components/
     Sidebar.tsx              three queues + payment rail
     InboxList.tsx            searchable invoice list with compact cards
@@ -71,8 +71,8 @@ nginx.conf                   SPA fallback + /api proxy to the backend service
 - **Payment method beside the facts:** the summary grid puts the card/EFT rail next to amount,
   tax, due date and PO number. Bank details waiting on review are called out explicitly.
 - **One clear primary action:** the bottom action bar uses a full sentence, for example
-  `Approve ($12,500.00)`, `Release payment ($12,500.00)` or `Mark issue resolved`. Secondary
-  `Reply` and `Audit trail` buttons sit beside it.
+  `Approve ($12,500.00)`, `Release payment ($12,500.00)` or `Mark issue resolved`. The
+  `Audit trail` button sits beside it.
 - **Document first:** the risk overview stays at the top, the invoice PDF preview renders
   directly underneath, and the raw email is one tab away under `Original email`.
 - **Activity without jargon:** open **Activity & audit trail** from the preview header or footer
