@@ -16,6 +16,8 @@ spring:
 
 app:
   data-dir: ${DATA_DIR:../data}          # the sample dataset (CSV, inbox, incoming_invoices)
+  seed:
+    lenient: ${SEED_LENIENT:false}  # true = skip and report bad CSV rows instead of aborting the seed
   storage-dir: ${STORAGE_DIR:./storage}  # uploaded documents, keyed by SHA-256
   pipeline:
     poll-ms: 500        # how often the runner checks the jobs table

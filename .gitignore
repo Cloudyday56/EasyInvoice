@@ -20,3 +20,6 @@ frontend/dist/
 
 data
 /data/*
+!/sample-data/
+# the small curated sample IS tracked (the rules above would hide its data/ folder)
+!/sample-data/**

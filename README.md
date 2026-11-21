@@ -15,6 +15,46 @@ data/       sample dataset (CSV history, inbox emails, incoming invoice files): 
 `data/` is git-ignored. Copy the `brim_datasets` folder contents into `data/` before running, so that
 `data/data/users.csv`, `data/inbox/emails.json` and `data/incoming_invoices/` exist. Without it the database starts empty.
 
+### Small demo sample with bad rows (tracked in git)
+
+`sample-data/` has the same layout as `data/` but is a tiny slice of it, so each step of the workflow can be shown on one document.
+Every good row and file is copied from `data/`.
+
+```bash
+SEED_LENIENT=true DATA_PATH=./sample-data docker compose up --build                       # Docker (docker compose down -v first to reseed)
+cd backend && DATA_DIR=../sample-data SEED_LENIENT=true ./mvnw spring-boot:run            # local
+```
+
+**History:** 3 invoices, users and departments around them. Users: admins Priya Raman, Marcus Webb and Elise Tremblay; approvers
+Dev Malhotra, Chloe Bergeron and Liam O'Connor (on leave, delegate Elise Tremblay); employees including Aiden Grant (Operations),
+Kavya Morrison (Facilities, reports to Liam) and Noah Park (terminated); an AP clerk.
+
+**Demo: upload one file at a time** (switch to employee Aiden Grant, **Upload invoice**, pick a file from `sample-data/incoming_invoices/`)
+and watch where it stops. Try them in any order, but upload each file once (a second copy is a repeat invoice number):
+
+| File | Stops at | Why |
+|---|---|---|
+| `scan_8749.png` | Extraction review | a scan has no text layer; the manual extractor reads nothing |
+| `Invoice 000961.pdf` | Validation failed | repeat invoice number: already billed as AP-00393 |
+| `voyageurcorporat-inv-017.pdf` | Fraud hold (score 70) | split invoice (same vendor and amount as AP-00277, two days apart, +25) and an unverified bank change for the vendor (+45) |
+| `pineconecollabor_PI262809.pdf` | Pending approval | passes every check ($868.14, due 2026-12-02); Dev Malhotra approves next |
+
+The unverified bank change (`BC-DEMO-01` in `bank_change_history.csv`) is the one invented row in the sample, a copy of a real one
+re-pointed at Voyageur. Without it an upload scores only 25, because the look-alike-sender signal needs an email.
+
+**Optional, as Admin: Audit & tools → Poll inbox** feeds the 5 emails in `inbox/emails.json` through the same pipeline: the same
+three failures (with the look-alike sender signal this time), plus an "Invoice attached" email with no attachment (Missing document)
+and a newsletter (Ignored). Do not both poll and upload the same invoices.
+
+**Bad rows:** ids containing `BAD`, plus duplicate-id copies of `U013` and `AP-00277`, are deliberately broken copies of real rows (unknown role,
+unknown department, impossible date, non-number, unknown vendor, blank required value...). `SEED_LENIENT=true` makes the seed skip a bad
+row (and a bad file) instead of aborting; each skipped row is logged as `Seed: skipped invoices.csv row 5 (AP-BAD-01): reason` and
+listed in the `seed.loaded` audit event. Without that flag the seed stays strict and stops at the first bad row.
+
+Known gaps shown by this sample: the validation node is still a stub, so only the vendor-match checks (repeat number, unknown vendor,
+GST mismatch, missing FX rate) produce "Validation failed"; and inbox invoices stop in Routing error (no department) until an Admin
+assigns one, because only uploads get a department from the requester.
+
 ## Run it (one command)
 
 ```bash

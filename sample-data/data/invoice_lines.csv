@@ -1,0 +1,11 @@
+invoice_id,line_no,description,quantity,unit_price,amount,gl_account,department_id,gst_hst_code,pst_qst_code,line_type
+AP-00277,1,Airfare - Montreal-Montreal,6,884.82,5308.92,6710,D01,GST5,,services
+AP-00393,1,LTL shipment Montreal-Saskatoon,1,1488.13,1488.13,5010,D01,GST5,QST9975,services
+AP-00393,2,LTL shipment Montreal-Ottawa,1,1843.53,1843.53,5010,D01,GST5,QST9975,services
+AP-00393,3,LTL shipment Calgary-Edmonton,1,1636.73,1636.73,5010,D01,GST5,QST9975,services
+AP-00393,4,LTL shipment Winnipeg-Ottawa,1,372.94,372.94,5010,D01,GST5,QST9975,services
+AP-00393,5,LTL shipment Hamilton-Ottawa,1,446.13,446.13,5010,D01,GST5,QST9975,services
+AP-00393,6,Fuel surcharge (7.24%),1,419.01,419.01,5010,D01,GST5,QST9975,services
+AP-00405,1,Sparkgrid CRM Enterprise (15 seats),1,1950.00,1950.00,6110,D02,FOREIGN,,services
+AP-NOPE,1,Airfare - Montreal-Montreal,6,884.82,5308.92,6710,D01,GST5,,services
+AP-00277,1,Airfare - Montreal-Montreal,lots,884.82,5308.92,6710,D01,GST5,,services

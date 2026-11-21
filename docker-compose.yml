@@ -29,6 +29,7 @@ services:
       DB_USER: easyinvoice
       DB_PASSWORD: easyinvoice
       DATA_DIR: /data
+      SEED_LENIENT: ${SEED_LENIENT:-false}
       STORAGE_DIR: /storage
       # Read from the .env file next to this one (see .env.example). Empty = LLM off.
       LLM_API_KEY: ${LLM_API_KEY}
@@ -36,7 +37,7 @@ services:
       LLM_MODEL: ${LLM_MODEL}
       EXTRACTOR: ${EXTRACTOR}
     volumes:
-      - ./data:/data:ro      # the sample dataset, read-only
+      - ${DATA_PATH:-./data}:/data:ro      # the dataset, read-only (DATA_PATH=./sample-data for the small one)
       - storage:/storage     # uploaded documents
     ports:
       - "8080:8080"
