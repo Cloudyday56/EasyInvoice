@@ -262,6 +262,7 @@ export function toInvoice(
     invoiceDate: formatDate(dto.invoiceDate),
     paymentTerms: dto.invoiceDate && dto.dueDate ? termsOf(dto.invoiceDate, dto.dueDate) : '—',
     payment: paymentOf(dto),
+    card: detail?.card ?? null,
     lineItems:
       detail?.lines.map((l) => ({
         description: l.description ?? `Line ${l.lineNo}`,

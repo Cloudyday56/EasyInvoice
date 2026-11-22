@@ -129,6 +129,38 @@ export interface PaymentDto {
   failureReason: string | null
 }
 
+export type CardScenario = 'CORRECT' | 'WRONG_MERCHANT' | 'WRONG_AMOUNT' | 'EXPIRED'
+
+export interface CardInfo {
+  paymentId: string
+  status: string
+  maskedNumber: string
+  amountLimit: number
+  currency: string | null
+  merchantId: string | null
+  merchantName: string | null
+  expiresAt: string | null
+  singleUse: boolean
+  transactionId: string | null
+  redemptionReference: string | null
+  fallbackMethod: string | null
+  canRedeem: boolean
+}
+
+export interface CardRedemptionRequest {
+  scenario: CardScenario
+  merchantId?: string | null
+  amount?: number | null
+}
+
+export interface CardRedemptionResult {
+  approved: boolean
+  message: string
+  reference: string | null
+  fallbackMethod: string | null
+  cardStatus: string
+}
+
 export interface AuditEventDto {
   id: number
   invoiceId: string | null
@@ -168,6 +200,7 @@ export interface InvoiceDetail {
   flags: FlagDto[]
   approvalSteps: ApprovalStepDto[]
   payments: PaymentDto[]
+  card: CardInfo | null
   auditEvents: AuditEventDto[]
   document: DocumentInfo | null
   pipeline: NodeProgress[]
@@ -313,6 +346,8 @@ export const api = {
 
   releasePayment: (paymentId: string, reason?: string) =>
     post(`/payments/${encodeURIComponent(paymentId)}/release`, reason ? { reason } : undefined),
+  redeemCard: (paymentId: string, request: CardRedemptionRequest) =>
+    post<CardRedemptionResult>(`/payments/${encodeURIComponent(paymentId)}/card/redeem`, request),
 
   auditLog: (limit = 200) => json<AuditEventDto[]>(`/audit?limit=${limit}`),
   exportAudit: (invoiceId?: string) =>

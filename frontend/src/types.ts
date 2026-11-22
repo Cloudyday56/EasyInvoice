@@ -1,4 +1,4 @@
-import type { InvoiceDetail, InvoiceDto } from './api/client'
+import type { CardInfo, InvoiceDetail, InvoiceDto } from './api/client'
 
 export type InvoiceFlag = 'fraud' | 'critical' | 'overdue'
 
@@ -72,6 +72,7 @@ export interface Invoice {
   invoiceDate: string
   paymentTerms: string
   payment: PaymentMethod
+  card: CardInfo | null
   lineItems: LineItem[]
   poNumber: string | null
   province: string

@@ -52,6 +52,7 @@ src/
     InboxList.tsx            searchable invoice list with compact cards
     PreviewPanel.tsx         risk overview, facts, document/email tabs, action bar
     InvoiceDocument.tsx      paper-style invoice preview with payment details
+    CardRedemptionPanel.tsx  virtual-card visual + simulator controls and lifecycle status
     AuditTrailDrawer.tsx     human-readable activity timeline + integrity banner
     UploadModal.tsx          drag-and-drop invoice intake
     ReasonModal.tsx          written reason for approve / reject / return / resolve / release
@@ -67,9 +68,13 @@ nginx.conf                   SPA fallback + /api proxy to the backend service
 ## What the UI makes obvious
 
 - **Three queues only:** `Needs action`, `Fraud & holds`, and `Paid`. There are no dead `VIEWS`
-  links, and the sidebar shows the active Brim corporate card (`•• 4821`).
+  links. Card access lives in the invoice's **Payment method** tile, not in the sidebar.
 - **Payment method beside the facts:** the summary grid puts the card/EFT rail next to amount,
   tax, due date and PO number. Bank details waiting on review are called out explicitly.
+- **Brim card lifecycle:** after a card payment is released, click the Brim card in **Payment method**
+  to open the masked single-use card as a large card image in a blurred popup, with its
+  vendor/amount/expiry locks and Admin-only simulator buttons. Success marks the card used; a failed
+  attempt shows the automatic EFT fallback.
 - **One clear primary action:** the bottom action bar uses a full sentence, for example
   `Approve ($12,500.00)`, `Release payment ($12,500.00)` or `Mark issue resolved`. The
   `Audit trail` button sits beside it.
@@ -89,7 +94,8 @@ nginx.conf                   SPA fallback + /api proxy to the backend service
   Buttons follow the backend's `allowedActions`, so role, limit and separation-of-duty rules come
   from the server; refused actions show the server's reason in a red toast.
 - Releasing a payment asks for an optional note. Approve, reject, return and resolve require a
-  reason; all of them appear in the activity trail.
+  reason; all of them appear in the activity trail. Card redemption attempts are server-validated
+  and appear as **Card redeemed**, **Card declined** and **Fallback to bank transfer** events.
 - Admins get **Records & tools**: poll inbox, review audit activity, check audit integrity, download
   the audit log, test the document reader, clear invoices and reset demo data.
 - The audit drawer shows an integrity banner when opened from **Check audit integrity**. CSV

@@ -1,7 +1,6 @@
 import {
   CheckCircle2,
   ChevronsUpDown,
-  CreditCard,
   Download,
   History,
   Inbox,
@@ -284,35 +283,6 @@ export function Sidebar({
                 ))}
               </div>
             </>
-          )}
-
-          {!compact ? (
-            <div className="mt-6 rounded-2xl border border-sky-100 bg-sky-50/60 p-3">
-              <div className="flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-white text-sky-600 shadow-sm ring-1 ring-sky-100">
-                  <CreditCard size={13} strokeWidth={2.2} />
-                </span>
-                <p className="text-[9.5px] font-extrabold uppercase tracking-[0.15em] text-sky-700/80">
-                  Payment rail
-                </p>
-              </div>
-              <p className="mt-2 text-[11.5px] font-bold text-slate-700">Brim corporate card</p>
-              <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-medium text-slate-400">
-                •• 4821
-                <span className="h-1 w-1 rounded-full bg-slate-300" />
-                Active
-                <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              </p>
-            </div>
-          ) : (
-            <div className="mt-5 flex justify-center">
-              <span
-                title="Brim corporate card •• 4821"
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-sky-100 bg-sky-50 text-sky-600"
-              >
-                <CreditCard size={16} strokeWidth={2} />
-              </span>
-            </div>
           )}
         </nav>
 
