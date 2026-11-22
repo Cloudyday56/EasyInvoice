@@ -1,6 +1,6 @@
 # EasyInvoice Web
 
-The React front end for EasyInvoice, the card-first AP automation inbox for Harborline Logistics.
+The React front end for EasyInvoice, the card-first AP automation inbox.
 
 This milestone delivers the inbox experience: a focused sidebar, a searchable invoice list, and a
 preview that opens on the actual invoice document with one obvious payment action.

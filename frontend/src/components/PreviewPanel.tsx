@@ -114,14 +114,6 @@ export function PreviewPanel({
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#F7F7F5]">
       <header className="flex h-[64px] shrink-0 items-center justify-between border-b border-[#E8E8E4] bg-white px-3 sm:px-5">
         <div className="flex min-w-0 items-center gap-2.5">
-          <button
-            type="button"
-            onClick={onBack}
-            aria-label="Back to inbox"
-            className="icon-btn lg:hidden"
-          >
-            <ArrowLeft size={17} />
-          </button>
           <div className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-600 sm:flex">
             <FileText size={16} />
           </div>

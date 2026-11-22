@@ -574,6 +574,11 @@ export default function App() {
     setMobileView('preview')
   }
 
+  const backToInbox = () => {
+    setMobileView('inbox')
+    setSelectedId(null)
+  }
+
   const panelActions = actionsFor(selectedInvoice)
 
   const auditEventsForDrawer = useMemo(() => {
@@ -645,7 +650,7 @@ export default function App() {
               users={users}
               primary={panelActions?.primary ?? null}
               secondary={panelActions?.secondary ?? []}
-              onBack={() => setMobileView('inbox')}
+              onBack={backToInbox}
               onDownload={handleDownload}
               onAudit={openInvoiceAudit}
             />
