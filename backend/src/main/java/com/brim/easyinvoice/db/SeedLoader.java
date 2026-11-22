@@ -70,7 +70,12 @@ public class SeedLoader {
 
     private final EntityManager entityManager;
     private final AuditService audit;
-    private final Path csvDir;
+    private final Path resetCsvDir;     // used by seedAll (startup and Reset demo)
+    private final Path historyCsvDir;   // used by loadHistory (the full history, append-only)
+    private Path csvDir;                // the folder of the run in progress
+    private boolean skipExisting;       // history mode: rows whose id already exists are skipped, not inserted
+    private final Set<String> skippedInvoiceIds = new HashSet<>();
+    private int skippedCount;
     private final boolean lenient;
 
     // Per seed run: ids saved so far (as text, per entity type) and the rows skipped in lenient mode.
@@ -80,14 +85,34 @@ public class SeedLoader {
 
     public SeedLoader(EntityManager entityManager, AuditService audit,
                       @Value("${app.data-dir}") String dataDir,
+                      @Value("${app.history-dir}") String historyDir,
                       @Value("${app.seed.lenient:false}") boolean lenient) {
         this.entityManager = entityManager;
         this.audit = audit;
-        this.csvDir = Path.of(dataDir).resolve("data");
+        this.resetCsvDir = Path.of(dataDir).resolve("data");
+        this.historyCsvDir = Path.of(historyDir).resolve("data");
         this.lenient = lenient;
     }
 
+    /** Startup and Reset demo: load the configured sample dataset into empty tables. */
     public void seedAll() {
+        runSeed(resetCsvDir, false);
+    }
+
+    /**
+     * Load history: append the full history dataset (app.history-dir) to what is already there. Rows whose id
+     * already exists are skipped, and so are the lines, approvals and payments of an invoice that already exists.
+     * Returns what was loaded per table plus "skipped_existing".
+     */
+    public Map<String, Object> loadHistory() {
+        return runSeed(historyCsvDir, true);
+    }
+
+    private Map<String, Object> runSeed(Path dir, boolean skipExistingRows) {
+        csvDir = dir;
+        skipExisting = skipExistingRows;
+        skippedInvoiceIds.clear();
+        skippedCount = 0;
         log.info("Seeding from {} ({})", csvDir.toAbsolutePath(), lenient ? "lenient: bad rows are skipped" : "strict");
         savedIds.clear();
         rejects.clear();
@@ -121,6 +146,13 @@ public class SeedLoader {
         // purchase_orders, contracts, tax_codes, fx_rates, approval_policies, card_transactions, bank_statement.
 
         Map<String, String> firstInvoiceByNumber = new HashMap<>();
+        if (skipExisting) {   // numbers already in the database count as "seen", or the unique constraint would trip
+            for (Object[] r : entityManager.createQuery(
+                    "select i.vendor.id, i.canonicalInvoiceNumber, i.id from Invoice i "
+                            + "where i.vendor is not null and i.canonicalInvoiceNumber is not null", Object[].class).getResultList()) {
+                firstInvoiceByNumber.put(r[0] + "|" + r[1], (String) r[2]);
+            }
+        }
         List<String[]> repeats = new ArrayList<>();
         counts.put("invoices", load("invoices.csv", Invoice.class, row -> invoiceRow(row, firstInvoiceByNumber, repeats),
                 List.of("vendor_id", "department_id", "requester_user_id", "po_id", "contract_id"), (i, refs) -> {
@@ -128,8 +160,8 @@ public class SeedLoader {
                     i.setDepartment(ref(Department.class, refs.get("department_id")));
                     i.setRequester(ref(User.class, refs.get("requester_user_id")));
                     i.setPoNumberRaw((String) refs.get("po_id"));
-                    i.setPurchaseOrder(ref(PurchaseOrder.class, refs.get("po_id")));
-                    i.setContract(ref(Contract.class, refs.get("contract_id")));
+                    i.setPurchaseOrder(optionalRef(PurchaseOrder.class, refs.get("po_id")));
+                    i.setContract(optionalRef(Contract.class, refs.get("contract_id")));
                 }));
         flagHistoricalRepeats(repeats);
 
@@ -159,8 +191,10 @@ public class SeedLoader {
             counts.put("rejected", List.copyOf(rejects));
             if (rejectCount > rejects.size()) counts.put("rejected_not_listed", rejectCount - rejects.size());
         }
-        log.info("Seed complete: {}", counts);
-        audit.system(null, "seed.loaded", null, null, null, counts);
+        if (skipExisting) counts.put("skipped_existing", skippedCount);
+        log.info("{} complete: {}", skipExisting ? "History load" : "Seed", counts);
+        if (!skipExisting) audit.system(null, "seed.loaded", null, null, null, counts);
+        return counts;
     }
 
     // ---------- generic loader ----------
@@ -202,8 +236,12 @@ public class SeedLoader {
         int rowNo = 0;
         for (Map<String, String> csvRow : csvRows) {
             rowNo++;
+            if (skipExisting && entityType != Invoice.class && skippedInvoiceIds.contains(csvRow.get("invoice_id"))) {
+                skippedCount++;   // belongs to an invoice that is already loaded
+                continue;
+            }
             try {
-                persistRow(entityType, toRow.apply(csvRow), relationColumns, linker);
+                if (!persistRow(entityType, toRow.apply(csvRow), relationColumns, linker)) continue;
             } catch (RuntimeException e) {
                 if (!lenient) throw e;
                 reject(fileName, rowNo, csvRow.values().stream().findFirst().orElse(""), e);
@@ -219,7 +257,8 @@ public class SeedLoader {
         return count;
     }
 
-    private <T> void persistRow(Class<T> entityType, Map<String, Object> row,
+    /** Returns false when the row was skipped because it already exists (history mode only). */
+    private <T> boolean persistRow(Class<T> entityType, Map<String, Object> row,
                                 List<String> relationColumns, BiConsumer<T, Map<String, Object>> linker) {
         row.replaceAll((column, value) -> emptyToNull(value));
         Map<String, Object> refs = new HashMap<>();
@@ -227,8 +266,14 @@ public class SeedLoader {
             refs.put(column, row.remove(column));
         }
         T entity = csvMapper.convertValue(row, entityType);
-        if (linker != null) linker.accept(entity, refs);
-        String id = idOf(entity);   // null for a database-generated id (lines, steps...): nothing to check or remember
+        String id = idOf(entity);
+        if (skipExisting && id != null && entityManager.find(entityType, id) != null) {
+            skippedCount++;
+            savedIds.computeIfAbsent(entityType, t -> new HashSet<>()).add(id);   // so lenient foreign-key checks still pass
+            if (entityType == Invoice.class) skippedInvoiceIds.add(id);
+            return false;
+        }
+        if (linker != null) linker.accept(entity, refs);   // null for a database-generated id (lines, steps...): nothing to check or remember
         if (lenient) {
             if (id == null && hasAssignedId(entityType)) throw new IllegalArgumentException("missing id");
             if (id != null && savedIds.getOrDefault(entityType, Set.of()).contains(id)) throw new IllegalArgumentException("duplicate id " + id);
@@ -236,6 +281,7 @@ public class SeedLoader {
         }
         entityManager.persist(entity);
         if (id != null) savedIds.computeIfAbsent(entityType, t -> new HashSet<>()).add(id);
+        return true;
     }
 
     private static boolean hasAssignedId(Class<?> type) {
@@ -284,6 +330,15 @@ public class SeedLoader {
             throw new IllegalArgumentException("unknown " + type.getSimpleName() + " " + id);   // would break the foreign key
         }
         return entityManager.getReference(type, id);
+    }
+
+    /**
+     * Like ref(), but a row that is not in the database yields null instead of an error. For optional links to
+     * tables the demo does not seed (purchase orders, contracts): the invoice still loads, just without the link.
+     */
+    private <E> E optionalRef(Class<E> type, Object id) {
+        if (id == null) return null;
+        return entityManager.find(type, id) == null ? null : entityManager.getReference(type, id);
     }
 
     private void linkDepartmentManagers(Map<String, String> managerByDepartment) {
@@ -414,7 +469,7 @@ public class SeedLoader {
         String canonical = InvoiceNumbers.canonical(row.get("vendor_invoice_number"));
         String key = row.get("vendor_id") + "|" + canonical;
         String first = firstInvoiceByNumber.putIfAbsent(key, row.get("invoice_id"));
-        if (first == null) {
+        if (first == null || first.equals(row.get("invoice_id"))) {
             out.put("canonical_invoice_number", canonical);
         } else {
             repeats.add(new String[]{row.get("invoice_id"), first, row.get("vendor_invoice_number")});
@@ -424,6 +479,7 @@ public class SeedLoader {
 
     private void flagHistoricalRepeats(List<String[]> repeats) {
         for (String[] r : repeats) {
+            if (lenient && !savedIds.getOrDefault(Invoice.class, Set.of()).contains(r[0])) continue;   // that row was skipped
             log.warn("Historical repeat: {} has the same vendor and invoice number ({}) as {}", r[0], r[2], r[1]);
             entityManager.persist(new Flag(ref(Invoice.class, r[0]), "SEED", "HISTORICAL_REPEAT_NUMBER", FlagSeverity.FLAG,
                     "Same vendor and invoice number " + r[2] + " as " + r[1] + " (possible double payment in history)"));

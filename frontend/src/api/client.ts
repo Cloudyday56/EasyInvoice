@@ -323,7 +323,7 @@ export const api = {
   verifyAudit: () => json<VerifyResult>('/audit/verify'),
 
   pollInbox: () => post<Record<string, number>>('/admin/poll-inbox'),
-  clearInvoices: () => post<{ status: string }>('/admin/clear-invoices'),
+  loadHistory: () => post<Record<string, number>>('/admin/load-history'),
   resetDemo: () => post<{ status: string }>('/admin/reset-demo'),
   testLlm: () => post<{ model: string; reply: string }>('/admin/llm/test'),
 }
