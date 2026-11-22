@@ -19,6 +19,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import type { Invoice } from '../types'
 import type { NodeProgress, UserDto } from '../api/client'
+import { pipelineNodes } from '../api/adapt'
 import { formatMoney } from '../lib/format'
 import { cn } from '../lib/cn'
 import { InvoiceDocument } from './InvoiceDocument'
@@ -178,9 +179,7 @@ export function PreviewPanel({
             </div>
           </div>
 
-          {invoice.detail && (
-            <PipelineTracker nodes={invoice.detail.pipeline} />
-          )}
+          <PipelineTracker nodes={pipelineNodes(invoice.raw, invoice.detail)} />
 
           {invoice.detail && invoice.detail.approvalSteps.length > 0 && (
             <div className="rounded-xl border border-slate-200 bg-white p-4">
