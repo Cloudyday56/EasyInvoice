@@ -172,31 +172,7 @@ export function Sidebar({
           </button>
         </div>
 
-        <div
-          className={cn(
-            'mx-3 mt-5 flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-2.5 shadow-sm shadow-slate-200/40',
-            compact && 'mx-2 justify-center border-transparent bg-transparent p-0 shadow-none',
-          )}
-        >
-          <Avatar
-            initials="HL"
-            size="lg"
-            className="bg-gradient-to-br from-sky-400 to-blue-600 text-white"
-            ring={!compact}
-          />
-          {!compact && (
-            <div className="min-w-0">
-              <p className="truncate text-[12.5px] font-bold text-slate-800">
-                Harborline Logistics
-              </p>
-              <p className="truncate text-[10.5px] font-medium text-slate-400">
-                AP Team · Toronto
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div className={cn('mt-3 px-3', compact && 'px-2')}>
+        <div className={cn('mt-5 px-3', compact && 'px-2')}>
           <button
             type="button"
             onClick={onUpload}

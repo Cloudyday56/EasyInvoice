@@ -2,6 +2,7 @@ package com.brim.easyinvoice.web;
 
 import com.brim.easyinvoice.audit.AuditEvent;
 import com.brim.easyinvoice.model.Invoice;
+import com.brim.easyinvoice.model.InvoiceStatus;
 import com.brim.easyinvoice.pipeline.NodeName;
 import tools.jackson.databind.ObjectMapper;
 
@@ -29,13 +30,23 @@ final class PipelineProgress {
             }
         }
 
+        // Seeded history has a final status but no node.* events. Fill in the steps its status implies.
+        int inferredFloor = inferredFloor(invoice);
         List<NodeProgress> result = new ArrayList<>();
         for (NodeName node : NodeName.values()) {
             AuditEvent last = lastByNode.get(node.name());
             String state;
             String message = null;
             if (last == null) {
-                state = node.name().equals(invoice.getCurrentNode()) ? "running" : "pending";
+                int index = node.ordinal();
+                if (index < inferredFloor) {
+                    state = "done";
+                } else if (index == inferredFloor) {
+                    state = inferredState(invoice);
+                    message = lastByNode.isEmpty() ? "From sample history" : null;
+                } else {
+                    state = "pending";
+                }
             } else {
                 state = switch (last.getAction()) {
                     case "node.PASS" -> "done";
@@ -57,6 +68,42 @@ final class PipelineProgress {
             result.add(new NodeProgress(node.name(), node.label(), state, message));
         }
         return result;
+    }
+
+    /** How many steps the invoice's status says it has passed, when events are missing. */
+    private static int inferredFloor(Invoice invoice) {
+        InvoiceStatus status = invoice.getStatus();
+        int current = currentIndex(invoice);
+        return switch (status) {
+            case PAID -> NodeName.values().length;
+            case RELEASED, SCHEDULED -> NodeName.PAYMENT_RELEASE.ordinal();
+            case APPROVED -> NodeName.PAYMENT_SCHEDULING.ordinal();
+            case PENDING_APPROVAL -> NodeName.APPROVAL_EXECUTION.ordinal();
+            case ON_HOLD, ON_HOLD_VENDOR, VALIDATING -> current >= 0 ? current : NodeName.VALIDATION_RULES.ordinal();
+            case EXTRACTED -> NodeName.EXTRACTION.ordinal();
+            case REJECTED -> NodeName.APPROVAL_EXECUTION.ordinal();
+            case IGNORED -> NodeName.EMAIL_CLASSIFIER.ordinal();
+            case RECEIVED -> Math.max(0, current);
+        };
+    }
+
+    private static int currentIndex(Invoice invoice) {
+        if (invoice.getCurrentNode() == null) return -1;
+        try {
+            return NodeName.valueOf(invoice.getCurrentNode()).ordinal();
+        } catch (IllegalArgumentException ignored) {
+            return -1;
+        }
+    }
+
+    private static String inferredState(Invoice invoice) {
+        return switch (invoice.getStatus()) {
+            case PAID -> "done";
+            case REJECTED -> "blocked";
+            case IGNORED -> "ignored";
+            case ON_HOLD, ON_HOLD_VENDOR, PENDING_APPROVAL, SCHEDULED -> "waiting";
+            default -> "running";
+        };
     }
 
     private static String messageOf(AuditEvent event, ObjectMapper json) {

@@ -4,7 +4,7 @@ import { formatMoney } from '../lib/format'
 import { Avatar } from './ui'
 
 const billTo = {
-  name: 'Harborline Logistics Inc.',
+  name: 'Accounts Payable',
   address: '120 Bremner Blvd, Suite 1800',
   city: 'Toronto, ON M5J 0A8',
 }
@@ -83,7 +83,7 @@ export function InvoiceDocument({ invoice }: { invoice: Invoice }) {
             <p className="text-[8.5px] font-extrabold uppercase tracking-[0.16em] text-slate-400">
               Ship to
             </p>
-            <p className="mt-1 text-[10.5px] font-bold text-slate-700">Harborline Logistics</p>
+            <p className="mt-1 text-[10.5px] font-bold text-slate-700">{billTo.name}</p>
             <p className="mt-0.5 text-[9.5px] leading-relaxed text-slate-400">
               {shipTo(invoice)}
               <br />
@@ -192,7 +192,7 @@ export function InvoiceDocument({ invoice }: { invoice: Invoice }) {
                 ? 'The remit-to account differs from the vendor master. Verify the change by calling the vendor number on file before releasing payment.'
                 : isCard
                   ? 'Single-use card, locked to this vendor and amount. Charged when the invoice is approved.'
-                  : 'Paid from the Harborline AP operating account. Bank detail changes require a second Admin.'}
+                  : 'Paid from the AP operating account. Bank detail changes require a second Admin.'}
             </p>
           </div>
         </div>

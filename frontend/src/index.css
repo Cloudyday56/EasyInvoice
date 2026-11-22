@@ -81,7 +81,11 @@
   .animate-toast {
     animation: toast-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.1) both;
   }
+}
 
+/* Component classes live before utilities so responsive utilities like `lg:hidden`
+   can override their `display` values. */
+@layer components {
   .icon-btn {
     display: inline-flex;
     height: 2rem;

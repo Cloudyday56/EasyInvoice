@@ -574,6 +574,11 @@ export default function App() {
     setMobileView('preview')
   }
 
+  const backToInbox = () => {
+    setMobileView('inbox')
+    setSelectedId(null)
+  }
+
   const panelActions = actionsFor(selectedInvoice)
 
   const auditEventsForDrawer = useMemo(() => {
@@ -645,12 +650,7 @@ export default function App() {
               users={users}
               primary={panelActions?.primary ?? null}
               secondary={panelActions?.secondary ?? []}
-              onBack={() => setMobileView('inbox')}
-              onAssign={(team) => notify(`Assigned to ${team} · notification sent`)}
-              onReply={(message) =>
-                selectedInvoice &&
-                notify(`Reply drafted to ${selectedInvoice.supplier} · ${message.length} characters`)
-              }
+              onBack={backToInbox}
               onDownload={handleDownload}
               onAudit={openInvoiceAudit}
             />

@@ -1,6 +1,6 @@
 // Maps backend DTOs onto the view model the UI components were designed around.
 import type { Invoice, InvoiceFlag, InvoiceStatus, PaymentMethod, Person, RiskTone } from '../types'
-import type { BackendInvoiceStatus, InvoiceDetail, InvoiceDto, Lookups, UserDto } from './client'
+import type { BackendInvoiceStatus, InvoiceDetail, InvoiceDto, Lookups, NodeProgress, UserDto } from './client'
 import { formatDate, initials, timeAgo } from '../lib/format'
 
 const NODE_ORDER = [
@@ -132,6 +132,33 @@ function pipelineState(dto: InvoiceDto): Invoice['pipeline'] {
     label: NODE_LABELS[dto.currentNode!] ?? dto.currentNode!,
     progress: Math.round((index / NODE_ORDER.length) * 100),
   }
+}
+
+/** Progress that always renders, even before (or without) the detail request finishing. */
+export function pipelineNodes(dto: InvoiceDto, detail?: InvoiceDetail): NodeProgress[] {
+  if (detail?.pipeline?.length) return detail.pipeline
+
+  const current = dto.status === 'PAID'
+    ? NODE_ORDER.length
+    : NODE_ORDER.indexOf(dto.currentNode ?? '')
+  const blocked = dto.status === 'REJECTED' || dto.status === 'IGNORED'
+  const waiting = isOnHold(dto.status) || dto.status === 'PENDING_APPROVAL'
+
+  return NODE_ORDER.map((node, index) => {
+    let state: NodeProgress['state'] = 'pending'
+    if (current >= 0) {
+      if (index < current || dto.status === 'PAID') state = 'done'
+      else if (index === current) state = blocked ? 'blocked' : waiting ? 'waiting' : 'running'
+    }
+    return {
+      node,
+      label: NODE_LABELS[node] ?? node,
+      state,
+      message: index === current && current >= 0 && current < NODE_ORDER.length
+        ? `${Math.round((current / NODE_ORDER.length) * 100)}% through the pipeline`
+        : null,
+    }
+  })
 }
 
 /** From the list row alone (the detail has no say), so the method cannot change when the detail loads. */
