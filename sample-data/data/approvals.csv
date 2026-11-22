@@ -1,5 +1,2 @@
 approval_id,invoice_id,step_no,approver_user_id,approver_role,action,acted_at,comment
 AP-A-00306,AP-00277,1,U007,dept_manager,approved,2026-07-07T14:17:00,
-AP-A-00438,AP-00393,1,U007,dept_manager,approved,2026-10-05T10:38:00,
-AP-A-00452,AP-00405,1,U008,dept_manager,approved,2026-10-09T15:05:00,
-AP-A-BAD-01,AP-00277,1,U007,dept_manager,pending,2026-07-07T14:17:00,

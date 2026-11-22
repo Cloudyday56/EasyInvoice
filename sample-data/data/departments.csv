@@ -1,7 +1,4 @@
 department_id,name,cost_centre,annual_budget_cad,manager_user_id
 D01,Operations,1100,1800000,U007
-D02,Sales,1200,420000,U008
 D04,Finance,1400,260000,U002
-D07,Facilities,1700,720000,U012
 D08,Executive,1800,300000,U001
-
