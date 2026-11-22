@@ -1,0 +1,7 @@
+invoice_id,line_no,description,quantity,unit_price,amount,gl_account,department_id,gst_hst_code,pst_qst_code,line_type
+AP-00277,1,Airfare - Montreal-Montreal,6,884.82,5308.92,6710,D01,GST5,,services
+AP-00225,1,Printed brochures,2663,0.87,2316.81,6420,D02,GST5,PST7_BC,goods
+AP-00225,2,Branded signage,9,288.74,2598.66,6420,D02,GST5,PST7_BC,goods
+AP-00403,1,Fleet fuel card charges - October,1,5623.39,5623.39,5020,D01,GST5,QST9975,goods
+AP-00423,1,Toner cartridges,2,216.23,432.46,6210,D02,GST5,QST9975,goods
+AP-00423,2,Stationery and desk supplies,1,570.87,570.87,6210,D02,GST5,QST9975,goods

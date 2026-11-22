@@ -1,0 +1,6 @@
+vendor_id,legal_name,category,default_gl_account,address,province_or_state,country,gst_hst_number,qst_number,payment_terms_days,early_pay_discount,preferred_payment_method,accepts_card_payment,bank_institution,bank_transit,bank_account,bank_details_updated_at,ap_contact_email,requires_po,status,onboarded_at
+V017,Pinecone Collaboration Ltd.,Software & SaaS,6110,"4868 Industrial Pkwy, Vancouver BC V5A 9A8",BC,CA,705518273RT0001,,30,,CARD,yes,,,,,ar@pineconecollaboration.example,no,active,2024-06-03
+V046,Voyageur Corporate Travel,Travel,6710,"1548 King St W, Toronto ON P8Y 9M2",ON,CA,338192319RT0001,,15,,CARD,yes,,,,,ar@voyageurcorporate.example,no,active,2024-12-20
+V007,Trailhead Fuel Services,Fuel & Fleet,5020,"5650 Industrial Pkwy, Toronto ON N2L 6G6",ON,CA,723947408RT0001,,15,,EFT,yes,016,23298,210444486,,ar@trailheadfuel.example,no,active,2022-12-16
+V024,Paper Trail Office Supply,Office Supplies,6210,"4694 Centre St, Toronto ON M2E 5M7",ON,CA,807091741RT0001,,30,2/10 net 30,EFT,yes,003,19916,935395864,,ar@papertrail.example,no,active,2023-07-10
+V033,Lumen Print & Signage,Printing & Signage,6420,"202 Industrial Pkwy, Mississauga ON M7T 2V3",ON,CA,579505145RT0001,,30,2/10 net 30,EFT,no,004,20628,642160921,2026-04-26,ar@lumenprint.example,no,active,2023-07-06

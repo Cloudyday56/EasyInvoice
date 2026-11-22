@@ -1,33 +1,25 @@
-HELP.md
-target/
-.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
+# Secrets (put your OpenRouter key in .env, never commit it)
+.env
 
-### STS ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-
-### IntelliJ IDEA ###
+# OS / IDE
+.DS_Store
 .idea
+.vscode/
 *.iws
 *.iml
 *.ipr
 
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
+# Backend (Maven)
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+backend/storage/
 
-### VS Code ###
-.vscode/
+# Frontend (Vite)
+frontend/node_modules/
+frontend/dist/
+
+data
+/data/*
+!/sample-data/
+# the small curated sample IS tracked (the rules above would hide its data/ folder)
+!/sample-data/**

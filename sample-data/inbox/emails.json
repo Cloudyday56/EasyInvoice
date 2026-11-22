@@ -1,0 +1,38 @@
+[
+  {
+    "email_id": "EM-005",
+    "from_name": "Trailhead Fuel Services Accounts Receivable",
+    "from_address": "ar@trailheadfuel.example",
+    "to_address": "ap@harborline-logistics.example",
+    "subject": "Payment due: invoice TR26-1042",
+    "received_at": "2026-10-21T08:35:00",
+    "body": "Bonjour,\n\nVeuillez trouver ci-joint la facture TR26-1042.\n\nCordialement,\nTrailhead Fuel Services",
+    "attachments": [
+      "Invoice TR26-1042.pdf"
+    ]
+  },
+  {
+    "email_id": "EM-024",
+    "from_name": "Paper Trail Office Supply Accounts Receivable",
+    "from_address": "ar@papertrail.example",
+    "to_address": "ap@harborline-logistics.example",
+    "subject": "Invoice 2217 from Paper Trail Office Supply",
+    "received_at": "2026-10-28T15:37:00",
+    "body": "Hi AP team,\n\nInvoice 2217 attached. Let us know if you have any questions.\n\nRegards,\nPaper Trail Office Supply",
+    "attachments": [
+      "papertrailoffice_2217.pdf"
+    ]
+  },
+  {
+    "email_id": "EM-053",
+    "from_name": "Lumen Print & Signage Accounts Receivable",
+    "from_address": "ar@lumenprint.example",
+    "to_address": "ap@harborline-logistics.example",
+    "subject": "Invoice FA-001761",
+    "received_at": "2026-11-02T09:32:00",
+    "body": "Hi AP team,\n\nInvoice FA-001761 attached. Let us know if you have any questions.\n\nRegards,\nLumen Print & Signage",
+    "attachments": [
+      "lumenprintsignag_FA001761.pdf"
+    ]
+  }
+]

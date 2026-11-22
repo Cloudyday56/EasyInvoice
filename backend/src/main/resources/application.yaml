@@ -1,0 +1,63 @@
+spring:
+  application:
+    name: easyinvoice
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/easyinvoice}
+    username: ${DB_USER:easyinvoice}
+    password: ${DB_PASSWORD:easyinvoice}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: create-drop  # Hibernate creates and updates the tables from the entities
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+app:
+  data-dir: ${DATA_DIR:../sample-data}          # the sample dataset (CSV, inbox, incoming_invoices)
+  history-dir: ${HISTORY_DIR:../data}    # the full history that "Load history" appends (same layout as data-dir)
+  seed:
+    lenient: ${SEED_LENIENT:false}  # true = skip and report bad CSV rows instead of aborting the seed
+  storage-dir: ${STORAGE_DIR:./storage}  # uploaded documents, keyed by SHA-256
+  pipeline:
+    poll-ms: 500        # how often the runner checks the jobs table
+    step-delay-ms: 800  # pause between nodes so the demo can watch the invoice move
+    max-attempts: 3
+  bank:
+    settle-after-ms: 4000  # mock bank: SENT -> SETTLED after this delay
+  fraud:
+    pass-below: 40              # score < 40 -> PASS
+    block-at: 70                # score >= 70 -> FRAUD_HOLD; 40..69 -> FLAG only
+    bank-change-window-days: 30
+    split-window-days: 3
+    split-limit-cad: 10000
+    split-tolerance-percent: 10
+    min-history-samples: 5
+    outlier-sigma: 3
+    free-mail-domains:
+      - gmail.com
+      - yahoo.com
+      - hotmail.com
+      - outlook.com
+      - icloud.com
+      - aol.com
+      - proton.me
+      - protonmail.com
+      - live.com
+      - msn.com
+      - mail.com
+      - gmail.ca
+    bank-mismatch-weight: 100        # immediate block, regardless of the total
+    unverified-bank-change-weight: 45
+    lookalike-domain-weight: 45
+    sender-domain-mismatch-weight: 10
+    free-mail-domain-weight: 25
+    duplicate-invoice-weight: 30
+    split-invoice-weight: 25
+    amount-outlier-weight: 20
+  extractor: ${EXTRACTOR:manual}
+  llm:
+    base-url: ${LLM_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai}
+    api-key: ${LLM_API_KEY:${OPENROUTER_API_KEY:}}  # never hard-code; set it in the root .env file
+    model: ${LLM_MODEL:gemini-3.8-flash}

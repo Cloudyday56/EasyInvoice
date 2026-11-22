@@ -1,0 +1,2 @@
+change_id,vendor_id,changed_at,changed_by_user_id,request_channel,verified_by_callback,old_account_last4,new_account_last4
+BC-DEMO-01,V046,2026-06-25,U005,email_request,no,7504,9679
