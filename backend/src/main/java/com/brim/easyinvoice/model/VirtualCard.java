@@ -35,5 +35,5 @@ public class VirtualCard extends BaseEntity<Long> {
 
     private OffsetDateTime expiresAt;
     private boolean singleUse = true;
-    private String status = "ISSUED";  // ISSUED | USED | EXPIRED
+    private String status = "ISSUED";  // ISSUED | USED | DECLINED
 }

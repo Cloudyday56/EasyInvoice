@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 import type { FilterId, Invoice } from './types'
 import { api, ApiError, getStoredUserId, setCurrentUserId } from './api/client'
-import type { AuditEventDto, InvoiceDetail, InvoiceDto, Lookups, UserDto, VerifyResult } from './api/client'
+import type { AuditEventDto, CardScenario, InvoiceDetail, InvoiceDto, Lookups, UserDto, VerifyResult } from './api/client'
 import { isOnHold, isTerminal, toInvoice } from './api/adapt'
 import { formatMoney } from './lib/format'
 import { cn } from './lib/cn'
@@ -13,6 +13,7 @@ import type { PanelAction } from './components/PreviewPanel'
 import { UploadModal } from './components/UploadModal'
 import { ReasonModal } from './components/ReasonModal'
 import { AuditTrailDrawer } from './components/AuditTrailDrawer'
+import { VirtualCardModal } from './components/VirtualCardModal'
 
 type MobileView = 'inbox' | 'preview'
 type ToastTone = 'success' | 'error'
@@ -58,6 +59,7 @@ export default function App() {
   const [mobileView, setMobileView] = useState<MobileView>('inbox')
   const [uploadOpen, setUploadOpen] = useState(false)
   const [reasonRequest, setReasonRequest] = useState<ReasonRequest | null>(null)
+  const [cardModal, setCardModal] = useState<{ invoiceId: string } | null>(null)
   const [toast, setToast] = useState<{ message: string; tone: ToastTone } | null>(null)
   const [toastBottom, setToastBottom] = useState(20)
   const [auditView, setAuditView] = useState<{ invoiceId?: string; title: string; subtitle: string } | null>(null)
@@ -67,6 +69,7 @@ export default function App() {
   const toastTimer = useRef<number | undefined>(undefined)
 
   const currentUser = users.find((u) => u.id === userId) ?? null
+  const canViewAudit = currentUser?.role === 'ADMIN'
 
   const notify = useCallback((message: string, tone: ToastTone = 'success') => {
     setToast({ message, tone })
@@ -208,14 +211,15 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
-      if (auditView) closeAudit()
+      if (cardModal) setCardModal(null)
+      else if (auditView) closeAudit()
       else if (reasonRequest) setReasonRequest(null)
       else if (uploadOpen) setUploadOpen(false)
       if (mobileSidebarOpen) setMobileSidebarOpen(false)
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [auditView, closeAudit, uploadOpen, mobileSidebarOpen, reasonRequest])
+  }, [auditView, cardModal, closeAudit, uploadOpen, mobileSidebarOpen, reasonRequest])
 
   // ---- View model -----------------------------------------------------------
 
@@ -271,6 +275,7 @@ export default function App() {
   }, [visibleInvoices, selectedId])
 
   const selectedInvoice = items.find((invoice) => invoice.id === selectedId) ?? null
+  const cardModalInvoice = cardModal ? (items.find((invoice) => invoice.id === cardModal.invoiceId) ?? null) : null
 
   // ---- Actions --------------------------------------------------------------
 
@@ -428,15 +433,17 @@ export default function App() {
           ? 'Rejected'
           : status === 'IGNORED'
             ? 'Ignored · not an invoice'
-            : status === 'RELEASED'
-              ? 'Released · awaiting settlement'
-              : status === 'SCHEDULED'
-                ? 'Scheduled · another finance user must release'
-                : status === 'PENDING_APPROVAL'
-                  ? `Waiting on ${waitingOn ?? 'approver'}`
-                  : isOnHold(status)
-                    ? 'On hold · needs review'
-                    : `Processing · ${invoice.pipeline.label}`
+            : status === 'RELEASED' && invoice.card
+              ? 'Card issued · ready to redeem'
+              : status === 'RELEASED'
+                ? 'Released · awaiting settlement'
+                : status === 'SCHEDULED'
+                  ? 'Scheduled · another finance user must release'
+                  : status === 'PENDING_APPROVAL'
+                    ? `Waiting on ${waitingOn ?? 'approver'}`
+                    : isOnHold(status)
+                      ? 'On hold · needs review'
+                      : `Processing · ${invoice.pipeline.label}`
     return {
       primary: {
         label,
@@ -449,7 +456,7 @@ export default function App() {
   }
 
   const openInvoiceAudit = () => {
-    if (!selectedInvoice) return
+    if (!canViewAudit || !selectedInvoice) return
     setAuditView({
       invoiceId: selectedInvoice.id,
       title: 'Activity & audit trail',
@@ -463,6 +470,7 @@ export default function App() {
 
   const openGlobalAudit = useCallback(
     async (verify = false) => {
+      if (!canViewAudit) return
       setAuditView({ title: 'All activity', subtitle: 'Every recorded change across all invoices.' })
       setAuditEvents([])
       setAuditVerification(null)
@@ -489,11 +497,11 @@ export default function App() {
         setAuditLoading(false)
       }
     },
-    [notify],
+    [canViewAudit, notify],
   )
 
   const downloadAudit = () => {
-    if (!auditView) return
+    if (!canViewAudit || !auditView) return
     api
       .exportAudit(auditView.invoiceId)
       .then(() => notify('Audit log downloaded'))
@@ -503,6 +511,59 @@ export default function App() {
   const handleDownload = () => {
     if (!selectedInvoice) return
     api.openDocument(selectedInvoice.id).catch((error) => notify(errorMessage(error), 'error'))
+  }
+
+  const openCardModal = async (invoice: Invoice | null = selectedInvoice, strict = false) => {
+    let target = invoice?.card ? invoice : null
+
+    // A card payment can render before its detail is loaded; fetch this invoice first.
+    if (!target && invoice) {
+      const detail = invoice.detail ?? (await api.invoice(invoice.id).catch(() => null))
+      if (detail?.card) {
+        setDetails((current) => ({ ...current, [invoice.id]: detail }))
+        target = toInvoice(invoice.raw, { lookups, users }, detail, Date.now())
+      }
+    }
+
+    // Only used by global shortcuts: the selected invoice changes as queues move.
+    if (!target && !strict) {
+      target = items.find((item) => item.card?.canRedeem) ?? items.find((item) => item.card) ?? null
+    }
+
+    // After a reload only the selected detail is loaded; find the card on likely card payments.
+    if (!target && !strict) {
+      const candidates = rows.filter(
+        (row) => row.paymentMethod === 'CARD' && (row.status === 'RELEASED' || row.status === 'PAID'),
+      )
+      for (const row of candidates) {
+        const detail = details[row.id] ?? (await api.invoice(row.id).catch(() => null))
+        if (!detail?.card) continue
+        setDetails((current) => ({ ...current, [row.id]: detail }))
+        target = toInvoice(row, { lookups, users }, detail, Date.now())
+        break
+      }
+    }
+
+    if (!target) {
+      notify('No Brim card is available for this payment.')
+      return
+    }
+    setCardModal({ invoiceId: target.id })
+    setMobileSidebarOpen(false)
+  }
+
+  const handleRedeemCard = async (scenario: CardScenario) => {
+    const invoice = cardModalInvoice ?? selectedInvoice
+    const paymentId = invoice?.card?.paymentId
+    if (!invoice || !paymentId) return
+    await run(
+      () => api.redeemCard(paymentId, { scenario }),
+      (result) =>
+        result.approved
+          ? `Card redeemed · ${result.reference ?? 'payment sent'}`
+          : `Card declined · ${result.fallbackMethod ?? 'EFT'} fallback · ${result.reference ?? 'sent'}`,
+      invoice.id,
+    )
   }
 
   const handleUpload = async (file: File | null) => {
@@ -650,6 +711,8 @@ export default function App() {
               onBack={backToInbox}
               onDownload={handleDownload}
               onAudit={openInvoiceAudit}
+              canViewAudit={canViewAudit}
+              onOpenCard={() => openCardModal(selectedInvoice, true)}
             />
           </div>
         </main>
@@ -668,8 +731,21 @@ export default function App() {
         }}
       />
 
+      <VirtualCardModal
+        open={Boolean(cardModal)}
+        card={cardModalInvoice?.card ?? null}
+        subtitle={
+          cardModalInvoice
+            ? `${cardModalInvoice.supplier} · ${cardModalInvoice.invoiceNumber}`
+            : undefined
+        }
+        busy={busy}
+        onRedeem={handleRedeemCard}
+        onClose={() => setCardModal(null)}
+      />
+
       <AuditTrailDrawer
-        open={Boolean(auditView)}
+        open={canViewAudit && Boolean(auditView)}
         events={auditEventsForDrawer}
         users={users}
         title={auditView?.title}

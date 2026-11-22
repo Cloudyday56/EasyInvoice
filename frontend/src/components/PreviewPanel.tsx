@@ -43,6 +43,8 @@ interface PreviewPanelProps {
   onBack: () => void
   onDownload: () => void
   onAudit: () => void
+  canViewAudit: boolean
+  onOpenCard: () => void
 }
 
 const approvalStatusLabels: Record<string, string> = {
@@ -71,6 +73,8 @@ export function PreviewPanel({
   onBack,
   onDownload,
   onAudit,
+  canViewAudit,
+  onOpenCard,
 }: PreviewPanelProps) {
   const [tab, setTab] = useState<'document' | 'email'>('document')
 
@@ -97,8 +101,12 @@ export function PreviewPanel({
     )
   }
 
-  const ActionIcon = actionIcons[action.kind]
+  const cardReady = Boolean(invoice.card?.canRedeem)
+  const shownAction = cardReady ? { ...action, disabled: false, onClick: onOpenCard } : action
+
+  const ActionIcon = actionIcons[shownAction.kind]
   const paymentLocked = Boolean(invoice.payment.locked)
+  const cardEntry = invoice.payment.kind === 'card' && !paymentLocked
   const PaymentIcon = paymentLocked
     ? ShieldAlert
     : invoice.payment.kind === 'card'
@@ -110,6 +118,22 @@ export function PreviewPanel({
       ? 'CARD · VIRTUAL'
       : 'EFT · BANK'
   const paymentValue = `${invoice.payment.label} ${invoice.payment.detail}`.trim()
+  const paymentFactClass = cn(
+    'min-w-0 rounded-lg border px-3 py-2',
+    paymentLocked
+      ? 'border-rose-200 bg-rose-50'
+      : invoice.payment.kind === 'card'
+        ? 'border-sky-200 bg-sky-50'
+        : 'border-slate-200 bg-slate-50',
+  )
+  const paymentLabelClass = cn(
+    'flex items-center gap-1 text-[9.5px] font-extrabold uppercase tracking-[0.08em]',
+    paymentLocked
+      ? 'text-rose-700'
+      : invoice.payment.kind === 'card'
+        ? 'text-sky-700'
+        : 'text-slate-500',
+  )
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#F7F7F5]">
@@ -138,15 +162,17 @@ export function PreviewPanel({
           >
             <Download size={16} />
           </button>
-          <button
-            type="button"
-            onClick={onAudit}
-            aria-label="View activity and audit trail"
-            title="Activity & audit trail"
-            className="icon-btn"
-          >
-            <History size={16} />
-          </button>
+          {canViewAudit && (
+            <button
+              type="button"
+              onClick={onAudit}
+              aria-label="View activity and audit trail"
+              title="Activity & audit trail — Admins only"
+              className="icon-btn"
+            >
+              <History size={16} />
+            </button>
+          )}
         </div>
       </header>
 
@@ -223,37 +249,42 @@ export function PreviewPanel({
               danger={invoice.flags.includes('overdue')}
             />
             <Fact label="PO number" value={invoice.poNumber ?? '—'} />
-            <div
-              className={cn(
-                'min-w-0 rounded-lg border px-3 py-2',
-                paymentLocked
-                  ? 'border-rose-200 bg-rose-50'
-                  : invoice.payment.kind === 'card'
-                    ? 'border-sky-200 bg-sky-50'
-                    : 'border-slate-200 bg-slate-50',
-              )}
-            >
-              <div
-                className={cn(
-                  'flex items-center gap-1 text-[9.5px] font-extrabold uppercase tracking-[0.08em]',
-                  paymentLocked
-                    ? 'text-rose-700'
-                    : invoice.payment.kind === 'card'
-                      ? 'text-sky-700'
-                      : 'text-slate-500',
-                )}
+            {cardEntry ? (
+              <button
+                type="button"
+                onClick={onOpenCard}
+                aria-label="Open Brim virtual card"
+                title="Open Brim virtual card"
+                className={cn(paymentFactClass, 'text-left transition hover:border-sky-300 hover:bg-sky-100/70')}
               >
-                <PaymentIcon size={11} strokeWidth={2.2} />
-                Payment method
+                <div className={paymentLabelClass}>
+                  <PaymentIcon size={11} strokeWidth={2.2} />
+                  Payment method
+                  <span className="ml-auto text-[9px] font-bold normal-case tracking-normal text-sky-600">View card ↗</span>
+                </div>
+                <p
+                  className="mt-0.5 truncate text-[11.5px] font-bold text-slate-800"
+                  title={`${paymentLabel} · ${paymentValue}`}
+                >
+                  {paymentLabel}
+                  <span className="ml-1 font-medium text-slate-500">{paymentValue}</span>
+                </p>
+              </button>
+            ) : (
+              <div className={paymentFactClass}>
+                <div className={paymentLabelClass}>
+                  <PaymentIcon size={11} strokeWidth={2.2} />
+                  Payment method
+                </div>
+                <p
+                  className="mt-0.5 truncate text-[11.5px] font-bold text-slate-800"
+                  title={`${paymentLabel} · ${paymentValue}`}
+                >
+                  {paymentLabel}
+                  <span className="ml-1 font-medium text-slate-500">{paymentValue}</span>
+                </p>
               </div>
-              <p
-                className="mt-0.5 truncate text-[11.5px] font-bold text-slate-800"
-                title={`${paymentLabel} · ${paymentValue}`}
-              >
-                {paymentLabel}
-                <span className="ml-1 font-medium text-slate-500">{paymentValue}</span>
-              </p>
-            </div>
+            )}
           </div>
 
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
@@ -339,22 +370,24 @@ export function PreviewPanel({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={action.onClick}
-              disabled={action.disabled || !action.onClick}
-              title={action.label}
+              onClick={shownAction.onClick}
+              disabled={shownAction.disabled || !shownAction.onClick}
+              title={shownAction.label}
               className={cn(
                 'action-primary',
-                action.tone === 'danger' && 'action-primary--danger',
-                action.tone === 'success' && 'action-primary--success',
+                shownAction.tone === 'danger' && 'action-primary--danger',
+                shownAction.tone === 'success' && 'action-primary--success',
               )}
             >
               <ActionIcon size={15} strokeWidth={2.2} />
-              <span className="truncate">{action.label}</span>
+              <span className="truncate">{shownAction.label}</span>
             </button>
 
-            <button type="button" onClick={onAudit} className="action-secondary">
-              <History size={14} /> Audit trail
-            </button>
+            {canViewAudit && (
+              <button type="button" onClick={onAudit} className="action-secondary" title="Admins only">
+                <History size={14} /> Audit trail
+              </button>
+            )}
             {secondary.map((item) => {
               const Icon = actionIcons[item.kind]
               return (

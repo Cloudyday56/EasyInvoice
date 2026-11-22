@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock,
+  CreditCard,
   Database,
   Download,
   FileText,
@@ -53,6 +54,9 @@ const ACTION_META: Record<string, ActionMeta> = {
   'approval.rejected': { label: 'Rejected', tone: 'danger', icon: Ban },
   'approval.returned': { label: 'Returned to AP', tone: 'warning', icon: Undo2 },
   'payment.released': { label: 'Payment released', tone: 'success', icon: Landmark },
+  'card.redeemed': { label: 'Card redeemed', tone: 'success', icon: CreditCard },
+  'card.declined': { label: 'Card declined', tone: 'danger', icon: CreditCard },
+  'payment.fallback_eft': { label: 'Fallback to bank transfer', tone: 'warning', icon: Landmark },
   'authz.denied': { label: 'Access denied', tone: 'danger', icon: Lock },
   'seed.loaded': { label: 'Sample data loaded', tone: 'neutral', icon: Database },
   'demo.reset': { label: 'Demo data reset', tone: 'neutral', icon: RotateCcw },
@@ -90,7 +94,12 @@ const PAYLOAD_LABELS: Record<string, string> = {
   queue: 'Queue',
   resumeNode: 'Resume at',
   amount: 'Amount',
+  amountLimit: 'Amount limit',
+  attemptedAmount: 'Attempted amount',
   currency: 'Currency',
+  card: 'Card',
+  merchant: 'Merchant',
+  attemptedMerchant: 'Attempted merchant',
   method: 'Method',
   channel: 'Channel',
   file: 'File',
@@ -142,7 +151,7 @@ function formatValue(key: string, value: unknown): string {
   if (key === 'queue') return auditHoldLabel(String(value))
   if (key === 'resumeNode') return auditNodeLabel(String(value))
   if (key === 'retryInMs' && typeof value === 'number') return `${Math.round(value / 1000)} seconds`
-  if (key === 'amount' && typeof value === 'number') {
+  if (['amount', 'amountLimit', 'attemptedAmount'].includes(key) && typeof value === 'number') {
     return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(value)
   }
   return String(value)

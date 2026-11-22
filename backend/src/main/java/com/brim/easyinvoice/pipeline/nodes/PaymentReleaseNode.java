@@ -29,7 +29,8 @@ import java.util.concurrent.ThreadLocalRandom;
  *   RELEASED  -> send to the (mock) bank, check back in 2 s
  *   SENT      -> ask the bank; SETTLED -> PASS (invoice becomes PAID), FAILED -> Payment exceptions
  *
- * TODO card flow: mock card network authorizes only if amount and merchant match; on decline fall back to EFT once.
+ * Card payments pause here after issue. CardRedemptionService performs the mock authorization,
+ * then sends the payment (or falls back to EFT) and re-enqueues this node for settlement.
  */
 @Component
 public class PaymentReleaseNode implements Node {
@@ -67,13 +68,17 @@ public class PaymentReleaseNode implements Node {
 
             case RELEASED:
                 if (payment.getMethod() == PaymentMethod.CARD) {
-                    VirtualCard card = new VirtualCard();
-                    card.setPayment(payment);
-                    card.setMaskedNumber("**** **** **** " + String.format("%04d", ThreadLocalRandom.current().nextInt(10000)));
-                    card.setAmountLimit(payment.getAmount());
-                    card.setMerchantLock(payment.getVendor());
-                    card.setExpiresAt(OffsetDateTime.now().plusDays(7));
-                    virtualCards.save(card);
+                    if (virtualCards.findByPayment_Id(payment.getId()).isEmpty()) {
+                        VirtualCard card = new VirtualCard();
+                        card.setPayment(payment);
+                        card.setMaskedNumber("**** **** **** " + String.format("%04d", ThreadLocalRandom.current().nextInt(10000)));
+                        card.setAmountLimit(payment.getAmount());
+                        card.setMerchantLock(payment.getVendor());
+                        card.setExpiresAt(OffsetDateTime.now().plusDays(7));
+                        virtualCards.save(card);
+                    }
+                    // The card must be redeemed before the payment rail is called.
+                    return StageResult.waitForHuman("Brim virtual card issued; waiting for redemption");
                 }
                 String reference = bank.send(payment);
                 payment.setStatus(PaymentStatus.SENT);
