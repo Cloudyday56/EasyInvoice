@@ -45,11 +45,10 @@ public class AdminController {
         return Map.of("status", "reset");
     }
 
-    /** Deletes every invoice but keeps users, vendors and other master data. */
-    @PostMapping("/clear-invoices")
-    public Map<String, String> clearInvoices(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId) {
-        demoReset.clearInvoices(currentUser.require(userId));
-        return Map.of("status", "cleared");
+    /** Appends the full history dataset; rows that already exist are skipped. */
+    @PostMapping("/load-history")
+    public Map<String, Object> loadHistory(@RequestHeader(value = CurrentUser.HEADER, required = false) String userId) {
+        return demoReset.loadHistory(currentUser.require(userId));
     }
 
     @PostMapping("/poll-inbox")

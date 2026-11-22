@@ -24,6 +24,7 @@ transactions, bank statement) are not seeded.
 ```bash
 DATA_PATH=./sample-data docker compose up --build                       # Docker (docker compose down -v first to reseed)
 cd backend && DATA_DIR=../sample-data ./mvnw spring-boot:run            # local
+# Reset demo data reloads DATA_PATH/DATA_DIR; Load history appends the full dataset from HISTORY_PATH/HISTORY_DIR (default ./data), skipping rows that already exist
 ```
 
 **History:** one paid invoice, `AP-00277` (Voyageur Corporate Travel, $5,574.37, 2026-07-04), plus the vendors Voyageur and

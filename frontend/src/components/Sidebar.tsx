@@ -8,7 +8,7 @@ import {
   Link2,
   MailPlus,
   RotateCcw,
-  Trash2,
+  Database,
   Sparkles,
   PanelLeftClose,
   PanelLeftOpen,
@@ -30,7 +30,7 @@ export interface AdminTools {
   verifyChain: () => void
   exportLog: () => void
   resetDemo: () => void
-  clearInvoices: () => void
+  loadHistory: () => void
   testLlm: () => void
 }
 
@@ -269,7 +269,7 @@ export function Sidebar({
                   { label: 'Check audit integrity', icon: Link2, onClick: adminTools.verifyChain },
                   { label: 'Download audit log', icon: Download, onClick: adminTools.exportLog },
                   { label: 'Test document reader', icon: Sparkles, onClick: adminTools.testLlm },
-                  { label: 'Clear invoices', icon: Trash2, onClick: adminTools.clearInvoices },
+                  { label: 'Load history', icon: Database, onClick: adminTools.loadHistory },
                   { label: 'Reset demo data', icon: RotateCcw, onClick: adminTools.resetDemo },
                 ].map(({ label, icon: Icon, onClick }) => (
                   <button

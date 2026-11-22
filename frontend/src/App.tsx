@@ -536,17 +536,12 @@ export default function App() {
     viewAuditLog: () => openGlobalAudit(),
     verifyChain: () => openGlobalAudit(true),
     exportLog: () => api.exportAudit().catch((error) => notify(errorMessage(error), 'error')),
-    clearInvoices: () => {
-      if (!window.confirm('Remove all invoices, payments and activity records? Users and vendors are kept.')) return
-      run(async () => {
-        await api.clearInvoices()
-        setDetails({})
-        setSelectedId(null)
-        closeAudit()
-      }, 'All invoices removed')
-    },
+    loadHistory: () =>
+      run(api.loadHistory, (result) =>
+        `History loaded · ${result?.invoices ?? 0} invoices added · ${result?.skipped_existing ?? 0} already present`,
+      ),
     resetDemo: () => {
-      if (!window.confirm('Clear all invoices and activity records, then reload the sample data?')) return
+      if (!window.confirm('Delete everything (invoices, users, vendors, activity) and reload the small sample dataset?')) return
       run(async () => {
         await api.resetDemo()
         setDetails({})

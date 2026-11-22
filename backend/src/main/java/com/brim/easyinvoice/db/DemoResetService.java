@@ -70,25 +70,18 @@ public class DemoResetService {
         bank.clear();
     }
 
-    /** Invoice-side tables only, children first. Users, vendors, POs, contracts and other master data stay. */
-    private static final List<Class<?>> INVOICE_TABLES = List.of(
-            AuditEvent.class, AuditHead.class,
-            CardTransaction.class, VirtualCard.class, Job.class, Notification.class,
-            Payment.class, Flag.class, ApprovalStep.class, InvoiceLine.class,
-            Invoice.class, SourceDocument.class, InvoiceNumber.class, PaymentNumber.class);
-
-    /** Removes every invoice (seeded history and uploads) with its payments, flags, steps and audit trail. */
-    public void clearInvoices(User user) {
+    /**
+     * "Load history": append the full history dataset (app.history-dir) to what is already there. Existing rows
+     * are skipped, so it is safe to click twice. Admin-only and audited.
+     */
+    public Map<String, Object> loadHistory(User user) {
         authorization.authorize(user, Action.RUN_ADMIN_TOOLS, null);
+        Map<String, Object>[] result = new Map[1];
         runner.pauseWhile(() -> transaction.executeWithoutResult(tx -> {
-            for (Class<?> entity : INVOICE_TABLES) {
-                entityManager.createQuery("delete from " + entity.getSimpleName()).executeUpdate();
-            }
-            entityManager.clear();
-            audit.record(Actor.of(user), null, null, "invoices.cleared", null, null, null,
-                    Map.of("by", user.getFullName()));
+            result[0] = seedLoader.loadHistory();
+            audit.record(Actor.of(user), null, null, "history.loaded", null, null, null, result[0]);
         }));
-        bank.clear();
+        return result[0];
     }
 
     private void deleteEverything() {
