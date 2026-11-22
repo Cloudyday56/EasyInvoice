@@ -38,7 +38,7 @@ services:
       LLM_MODEL: ${LLM_MODEL}
       EXTRACTOR: ${EXTRACTOR}
     volumes:
-      - ${DATA_PATH:-./data}:/data:ro      # the dataset, read-only (DATA_PATH=./sample-data for the small one)
+      - ${DATA_PATH:-./sample-data}:/data:ro      # the dataset, read-only (default: the small demo dataset)
       - ${HISTORY_PATH:-./data}:/history:ro  # the full history for "Load history"
       - storage:/storage     # uploaded documents
     ports:

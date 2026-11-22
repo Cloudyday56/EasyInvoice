@@ -1,2 +1,5 @@
 invoice_id,vendor_id,vendor_invoice_number,invoice_date,received_date,due_date,currency,subtotal,gst_hst_amount,pst_qst_amount,total,fx_rate_to_cad,total_cad,department_id,requester_user_id,po_id,contract_id,ship_to_province,status
 AP-00277,V046,000903,2026-07-04,2026-07-06,2026-07-19,CAD,5308.92,265.45,0.00,5574.37,1,5574.37,D01,U016,,,AB,paid
+AP-00225,V033,FA-001754,2026-06-02,2026-06-02,2026-07-02,CAD,4915.47,245.77,344.08,5505.32,1,5505.32,D02,U022,,,BC,paid
+AP-00403,V007,TR26-1037,2026-10-04,2026-10-06,2026-10-19,CAD,5623.39,281.17,560.93,6465.49,1,6465.49,D01,U020,,,QC,paid
+AP-00423,V024,2213,2026-10-20,2026-10-22,2026-11-19,CAD,1003.33,50.17,100.08,1153.58,1,1153.58,D02,U023,,,QC,paid

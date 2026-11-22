@@ -15,7 +15,7 @@ spring:
       max-request-size: 10MB
 
 app:
-  data-dir: ${DATA_DIR:../data}          # the sample dataset (CSV, inbox, incoming_invoices)
+  data-dir: ${DATA_DIR:../sample-data}          # the sample dataset (CSV, inbox, incoming_invoices)
   history-dir: ${HISTORY_DIR:../data}    # the full history that "Load history" appends (same layout as data-dir)
   seed:
     lenient: ${SEED_LENIENT:false}  # true = skip and report bad CSV rows instead of aborting the seed

@@ -1,3 +1,6 @@
 account_number,name,account_type,notes
 6110,Software Subscriptions,expense,
 6710,Travel,expense,
+5020,Fuel & Vehicle Operating,expense,
+6210,Office Supplies,expense,
+6420,Printing & Signage,expense,

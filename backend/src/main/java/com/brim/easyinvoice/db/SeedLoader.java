@@ -124,16 +124,20 @@ public class SeedLoader {
         Map<String, String> departmentManagers = new HashMap<>();
         Map<String, String[]> userManagersAndDelegates = new HashMap<>();
 
-        counts.put("departments", load("departments.csv", Department.class, row -> rename(row, "department_id", "id"),
-                List.of("manager_user_id"), (d, refs) -> departmentManagers.putIfAbsent(d.getId(), (String) refs.get("manager_user_id"))));
-        counts.put("users", load("users.csv", User.class, SeedLoader::userRow,
-                List.of("department_id", "manager_id", "delegate_user_id"), (u, refs) -> {
-                    u.setDepartment(ref(Department.class, refs.get("department_id")));
-                    userManagersAndDelegates.putIfAbsent(u.getId(),
-                            new String[]{(String) refs.get("manager_id"), (String) refs.get("delegate_user_id")});
-                }));
-        linkDepartmentManagers(departmentManagers);
-        linkUserManagersAndDelegates(userManagersAndDelegates);
+        // Users and departments have ONE source of truth: data-dir (sample-data). "Load history" never imports
+        // them; history rows that point at a person or department we do not have keep the row with that link empty.
+        if (!skipExisting) {
+            counts.put("departments", load("departments.csv", Department.class, row -> rename(row, "department_id", "id"),
+                    List.of("manager_user_id"), (d, refs) -> departmentManagers.putIfAbsent(d.getId(), (String) refs.get("manager_user_id"))));
+            counts.put("users", load("users.csv", User.class, SeedLoader::userRow,
+                    List.of("department_id", "manager_id", "delegate_user_id"), (u, refs) -> {
+                        u.setDepartment(ref(Department.class, refs.get("department_id")));
+                        userManagersAndDelegates.putIfAbsent(u.getId(),
+                                new String[]{(String) refs.get("manager_id"), (String) refs.get("delegate_user_id")});
+                    }));
+            linkDepartmentManagers(departmentManagers);
+            linkUserManagersAndDelegates(userManagersAndDelegates);
+        }
 
         counts.put("gl_accounts", load("gl_accounts.csv", GlAccount.class, SeedLoader::asRow));
         counts.put("vendors", load("vendors.csv", Vendor.class, SeedLoader::vendorRow));
@@ -326,6 +330,7 @@ public class SeedLoader {
     /** A reference to the row with this id (no query); null when the CSV cell was empty. */
     private <E> E ref(Class<E> type, Object id) {
         if (id == null) return null;
+        if (skipExisting && (type == User.class || type == Department.class)) return optionalRef(type, id);
         if (lenient && !savedIds.getOrDefault(type, Set.of()).contains(String.valueOf(id))) {
             throw new IllegalArgumentException("unknown " + type.getSimpleName() + " " + id);   // would break the foreign key
         }

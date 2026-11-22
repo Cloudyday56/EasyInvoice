@@ -3,6 +3,7 @@ package com.brim.easyinvoice.pipeline.nodes;
 import org.springframework.transaction.annotation.Transactional;
 import com.brim.easyinvoice.model.ApprovalStep;
 import com.brim.easyinvoice.model.Department;
+import com.brim.easyinvoice.repo.InvoiceRepository;
 import com.brim.easyinvoice.model.Invoice;
 import com.brim.easyinvoice.model.Role;
 import com.brim.easyinvoice.model.User;
@@ -24,6 +25,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -53,8 +55,11 @@ public class ApprovalRoutingNode implements Node {
     private final DepartmentRepository departments;
     private final ApprovalStepRepository steps;
     private final UserRepository users;
+    private final InvoiceRepository invoices;
 
-    public ApprovalRoutingNode(DepartmentRepository departments, ApprovalStepRepository steps, UserRepository users) {
+    public ApprovalRoutingNode(DepartmentRepository departments, ApprovalStepRepository steps, UserRepository users,
+                               InvoiceRepository invoices) {
+        this.invoices = invoices;
         this.departments = departments;
         this.steps = steps;
         this.users = users;
@@ -78,14 +83,22 @@ public class ApprovalRoutingNode implements Node {
         if (!live.isEmpty()) {
             return StageResult.pass("Approval chain already exists (" + live.size() + " steps)"); // idempotent
         }
-        if (invoice.getDepartmentId() == null) {
-            return StageResult.block(HoldQueue.ROUTING_ERROR, "NO_DEPARTMENT",
-                    "No department: the requester is unknown (e.g. invoice came by email)");
+        // An emailed invoice has no requester or department. Route it to the department this vendor was last billed to.
+        Department inferred = null;
+        String departmentId = invoice.getDepartmentId();
+        if (departmentId == null && invoice.getVendor() != null) {
+            inferred = invoices.findFirstByVendor_IdAndDepartmentIsNotNullAndIdNotOrderByCreatedAtDescIdDesc(
+                    invoice.getVendor().getId(), invoice.getId()).map(Invoice::getDepartment).orElse(null);
+            if (inferred != null) departmentId = inferred.getId();
         }
-        Optional<User> manager = departments.findById(invoice.getDepartmentId()).map(Department::getManager);
+        if (departmentId == null) {
+            return StageResult.block(HoldQueue.ROUTING_ERROR, "NO_DEPARTMENT",
+                    "No department: the requester is unknown and this vendor has no earlier invoice to copy it from");
+        }
+        Optional<User> manager = departments.findById(departmentId).map(Department::getManager);
         if (manager.isEmpty()) {
             return StageResult.block(HoldQueue.ROUTING_ERROR, "NO_APPROVER",
-                    "Department " + invoice.getDepartmentId() + " has no manager");
+                    "Department " + departmentId + " has no manager");
         }
         if (invoice.getTotalCad() == null) {
             return StageResult.block(HoldQueue.ROUTING_ERROR, "NO_AMOUNT", "Invoice amount in CAD is unknown");
@@ -119,7 +132,7 @@ public class ApprovalRoutingNode implements Node {
 
         if (chain.isEmpty() || !within(chain.get(chain.size() - 1).approver(), total)) {
             return StageResult.block(HoldQueue.ROUTING_ERROR, "NO_ELIGIBLE_APPROVER",
-                    "No approver can cover " + total + " CAD for department " + invoice.getDepartmentId());
+                    "No approver can cover " + total + " CAD for department " + departmentId);
         }
 
         for (int i = 0; i < chain.size(); i++) {
@@ -133,8 +146,11 @@ public class ApprovalRoutingNode implements Node {
             step.setActingFor(a.actingFor());
             steps.save(step);
         }
-        return StageResult.pass("Approval chain: " + chain.stream()
-                .map(a -> a.approver().getFullName()).collect(Collectors.joining(" > ")));
+        String chainText = "Approval chain: " + chain.stream()
+                .map(a -> a.approver().getFullName()).collect(Collectors.joining(" > "));
+        if (inferred == null) return StageResult.pass(chainText);
+        return StageResult.pass(chainText + " (department " + departmentId + " copied from this vendor's last invoice)",
+                Map.of("department", inferred));
     }
 
     /** Adds the Admin with this dataset role, unless that person (after the person rules) is already in the chain. */
