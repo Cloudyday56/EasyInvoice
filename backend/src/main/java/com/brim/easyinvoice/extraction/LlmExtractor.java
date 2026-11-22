@@ -73,17 +73,25 @@ public class LlmExtractor implements Extractor {
     }
 
     private ExtractedInvoice parse(String reply) {
-        String cleaned = reply.strip();
+        String cleaned = reply == null ? "" : reply.strip();
         if (cleaned.startsWith("```")) {  // models sometimes wrap JSON in a code fence
             cleaned = cleaned.replaceFirst("^```(json)?", "").replaceFirst("```$", "").strip();
         }
+        int start = cleaned.indexOf('{');
+        int end = cleaned.lastIndexOf('}');
+        if (start > 0 && end > start) cleaned = cleaned.substring(start, end + 1);   // chatter around the object
         return json.readValue(cleaned, ExtractedInvoice.class);
     }
 
-    private static Map<String, Object> filePart(SourceDocument document, byte[] bytes) {
+    /** Images (PNG/JPEG) go as an image_url data URI; PDFs as a "file" part (OpenRouter's PDF format). */
+    static Map<String, Object> filePart(SourceDocument document, byte[] bytes) {
         String base64 = Base64.getEncoder().encodeToString(bytes);
-        String dataUrl = "data:" + document.getContentType() + ";base64," + base64;
-        // Gemini's OpenAI-compatible endpoint takes PDFs and images alike as an image_url data URI.
+        String contentType = document.getContentType();
+        String dataUrl = "data:" + contentType + ";base64," + base64;
+        if ("application/pdf".equals(contentType)) {
+            String name = document.getFileName() == null ? "invoice.pdf" : document.getFileName();
+            return Map.of("type", "file", "file", Map.of("filename", name, "file_data", dataUrl));
+        }
         return Map.of("type", "image_url", "image_url", Map.of("url", dataUrl));
     }
 }

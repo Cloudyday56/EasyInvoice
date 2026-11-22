@@ -30,7 +30,7 @@ public enum HoldQueue {
             case VALIDATION_FAILED -> NodeName.VALIDATION_RULES;
             // A fraud fix must be re-scored; Admin-overridden signals are skipped by the node.
             case FRAUD_HOLD -> NodeName.FRAUD_SCORING;
-            case ROUTING_ERROR -> NodeName.APPROVAL_EXECUTION;
+            case ROUTING_ERROR -> NodeName.APPROVAL_ROUTING;   // routing is idempotent: it builds the missing steps
             case PAYMENT_EXCEPTIONS -> NodeName.PAYMENT_SCHEDULING;
         };
     }

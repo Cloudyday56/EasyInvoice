@@ -91,25 +91,24 @@ public class ApprovalRoutingNode implements Node {
                     invoice.getVendor().getId(), invoice.getId()).map(Invoice::getDepartment).orElse(null);
             if (inferred != null) departmentId = inferred.getId();
         }
-        if (departmentId == null) {
-            return StageResult.block(HoldQueue.ROUTING_ERROR, "NO_DEPARTMENT",
-                    "No department: the requester is unknown and this vendor has no earlier invoice to copy it from");
-        }
-        Optional<User> manager = departments.findById(departmentId).map(Department::getManager);
-        if (manager.isEmpty()) {
-            return StageResult.block(HoldQueue.ROUTING_ERROR, "NO_APPROVER",
-                    "Department " + departmentId + " has no manager");
-        }
         if (invoice.getTotalCad() == null) {
             return StageResult.block(HoldQueue.ROUTING_ERROR, "NO_AMOUNT", "Invoice amount in CAD is unknown");
         }
         BigDecimal total = invoice.getTotalCad().abs();
         String requesterId = invoice.getRequesterId();
 
+        // No department or no manager: nobody owns the spend, so an Admin reviews it instead of the invoice getting stuck.
         List<Assignment> chain = new ArrayList<>();
-        resolve(manager.get(), requesterId, "Department manager")
-                .filter(a -> within(a.approver(), total))
-                .ifPresent(chain::add);
+        Optional<User> manager = departmentId == null ? Optional.empty()
+                : departments.findById(departmentId).map(Department::getManager);
+        if (manager.isPresent()) {
+            resolve(manager.get(), requesterId, "Department manager")
+                    .filter(a -> within(a.approver(), total))
+                    .ifPresent(chain::add);
+        } else {
+            String why = departmentId == null ? "No department for this invoice" : "Department " + departmentId + " has no manager";
+            addFallbackAdmin(chain, why + "; assigned to an Admin", requesterId, total);
+        }
 
         Vendor vendor = invoice.getVendor();
         if (total.compareTo(FINANCE_MANAGER_OVER) > 0) {
@@ -130,6 +129,11 @@ public class ApprovalRoutingNode implements Node {
             addAdmin(chain, "controller_admin", "Total over $250,000", requesterId, true);   // highest-limit: the CFO
         }
 
+        if (chain.isEmpty() || !within(chain.get(chain.size() - 1).approver(), total)) {
+            // Nobody in the normal chain can cover the amount (or the chain is empty): an Admin signs it off manually.
+            addFallbackAdmin(chain, "No approver in the normal chain covers " + total + " CAD; assigned to an Admin",
+                    requesterId, total);
+        }
         if (chain.isEmpty() || !within(chain.get(chain.size() - 1).approver(), total)) {
             return StageResult.block(HoldQueue.ROUTING_ERROR, "NO_ELIGIBLE_APPROVER",
                     "No approver can cover " + total + " CAD for department " + departmentId);
@@ -160,6 +164,21 @@ public class ApprovalRoutingNode implements Node {
                 .max(highestLimit ? byLimit : byLimit.reversed())
                 .flatMap(admin -> resolve(admin, requesterId, why))
                 .filter(a -> chain.stream().noneMatch(c -> c.approver().getId().equals(a.approver().getId())))
+                .ifPresent(chain::add);
+    }
+
+    /**
+     * Last resort: the active Admin with the highest limit who is not the requester and not already in the chain
+     * (the person rules still apply: on leave goes to the delegate, and so on).
+     */
+    private void addFallbackAdmin(List<Assignment> chain, String why, String requesterId, BigDecimal total) {
+        users.findByRoleAndStatus(Role.ADMIN, UserStatus.ACTIVE).stream()
+                .sorted(Comparator.comparing(User::getApprovalLimitCad, Comparator.nullsFirst(Comparator.naturalOrder())).reversed())
+                .map(admin -> resolve(admin, requesterId, why))
+                .flatMap(Optional::stream)
+                .filter(a -> chain.stream().noneMatch(c -> c.approver().getId().equals(a.approver().getId())))
+                .filter(a -> within(a.approver(), total))
+                .findFirst()
                 .ifPresent(chain::add);
     }
 
