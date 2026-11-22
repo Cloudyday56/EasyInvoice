@@ -2,21 +2,16 @@ package com.brim.easyinvoice.db;
 
 import com.brim.easyinvoice.audit.AuditService;
 import com.brim.easyinvoice.model.BankChangeRequest;
-import com.brim.easyinvoice.model.BankStatementLine;
-import com.brim.easyinvoice.model.CardTransaction;
 import com.brim.easyinvoice.model.Contract;
 import com.brim.easyinvoice.model.Department;
 import com.brim.easyinvoice.model.Flag;
 import com.brim.easyinvoice.model.FlagSeverity;
-import com.brim.easyinvoice.model.FxRate;
 import com.brim.easyinvoice.model.GlAccount;
 import com.brim.easyinvoice.model.Invoice;
 import com.brim.easyinvoice.model.InvoiceLine;
 import com.brim.easyinvoice.model.InvoiceNumbers;
 import com.brim.easyinvoice.model.Payment;
-import com.brim.easyinvoice.model.Policy;
 import com.brim.easyinvoice.model.PurchaseOrder;
-import com.brim.easyinvoice.model.TaxCode;
 import com.brim.easyinvoice.model.User;
 import com.brim.easyinvoice.model.Vendor;
 import com.brim.easyinvoice.model.ApprovalStep;
@@ -122,19 +117,8 @@ public class SeedLoader {
                     r.setVendor(ref(Vendor.class, refs.get("vendor_id")));
                     r.setChangedBy(ref(User.class, refs.get("changed_by_user_id")));
                 }));
-        counts.put("purchase_orders", load("purchase_orders.csv", PurchaseOrder.class,
-                row -> rename(row, "po_id", "id"),
-                List.of("vendor_id", "department_id", "requester_user_id", "approved_by"), (po, refs) -> {
-                    po.setVendor(ref(Vendor.class, refs.get("vendor_id")));
-                    po.setDepartment(ref(Department.class, refs.get("department_id")));
-                    po.setRequester(ref(User.class, refs.get("requester_user_id")));
-                    po.setApprovedBy(ref(User.class, refs.get("approved_by")));
-                }));
-        counts.put("contracts", load("contracts.csv", Contract.class, SeedLoader::contractRow,
-                List.of("vendor_id"), (c, refs) -> c.setVendor(ref(Vendor.class, refs.get("vendor_id")))));
-        counts.put("tax_codes", load("tax_codes.csv", TaxCode.class, SeedLoader::asRow));
-        counts.put("fx_rates", load("fx_rates.csv", FxRate.class, row -> rename(row, "date", "rate_date")));
-        counts.put("policies", load("approval_policies.csv", Policy.class, row -> rename(row, "rule_id", "id")));
+        // Not seeded for the demo (loaders and entities kept; add a CSV and a load(...) call to bring one back):
+        // purchase_orders, contracts, tax_codes, fx_rates, approval_policies, card_transactions, bank_statement.
 
         Map<String, String> firstInvoiceByNumber = new HashMap<>();
         List<String[]> repeats = new ArrayList<>();
@@ -167,11 +151,6 @@ public class SeedLoader {
                     pay.setVendor(ref(Vendor.class, refs.get("vendor_id")));
                     pay.setReleasedBy(ref(User.class, refs.get("released_by")));
                 }));
-        counts.put("card_transactions", load("card_transactions.csv", CardTransaction.class,
-                SeedLoader::cardTransactionRow, List.of("cardholder_user_id"),
-                (t, refs) -> t.setCardholder(ref(User.class, refs.get("cardholder_user_id")))));
-        counts.put("bank_statement_lines", load("bank_statement.csv", BankStatementLine.class, row -> rename(row, "bank_txn_id", "id")));
-
         // TODO: inbox/emails.json and incoming_invoices/ are NOT seeded on purpose:
         //       they are unprocessed mail. An Admin pulls them in with "Poll inbox" (POST /api/admin/poll-inbox).
 

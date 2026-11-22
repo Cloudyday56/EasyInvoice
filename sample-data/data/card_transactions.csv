@@ -1,2 +1,0 @@
-txn_id,card_id,cardholder_user_id,posted_date,merchant_descriptor,mcc,amount,currency,amount_cad,source,receipt_attached,memo
-CT-00391,VC-AP-00277,U004,2026-07-20,VOYAGEUR CORPORATE TRA,4722,5574.37,CAD,5574.37,ap_virtual_card,yes,AP payment AP-00277

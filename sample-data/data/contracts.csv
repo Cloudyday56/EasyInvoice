@@ -1,3 +1,0 @@
-contract_id,vendor_id,description,billing_type,monthly_fee,currency,hourly_rate_cap,fuel_surcharge_cap_pct,not_to_exceed_monthly,start_date,end_date,auto_renew,status
-C004,V018,Monthly fixed fee agreement,fixed_monthly,1950.00,USD,,,,2026-01-01,2026-12-31,yes,active
-C018,V001,Freight rate card with fuel surcharge cap,rate_card,,CAD,,12,28000.00,2026-01-01,2026-12-31,yes,active

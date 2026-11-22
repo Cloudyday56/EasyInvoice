@@ -5,15 +5,5 @@ U003,Elise Tremblay,elise.tremblay@harborline-logistics.example,Finance Manager,
 U004,Jordan Okafor,jordan.okafor@harborline-logistics.example,AP Clerk,D04,U003,ap_clerk,0,ON,active,,,2017-05-20
 U005,Sam Patel,sam.patel@harborline-logistics.example,AP Clerk,D04,U003,ap_clerk,0,BC,active,,,2017-11-22
 U007,Dev Malhotra,dev.malhotra@harborline-logistics.example,Operations Manager,D01,U001,approver,10000,ON,active,,,2017-10-16
-U008,Chloe Bergeron,chloe.bergeron@harborline-logistics.example,Sales Director,D02,U001,approver,10000,QC,active,,,2025-06-10
-U012,Liam O'Connor,liam.o.connor@harborline-logistics.example,Facilities Manager,D07,U001,approver,10000,AB,on_leave,2026-10-20,U003,2019-06-13
 U013,Aiden Grant,aiden.grant@harborline-logistics.example,Dispatcher,D01,U007,employee,0,ON,active,,,2019-09-11
-U015,Noah Park,noah.park@harborline-logistics.example,Dispatcher,D01,U007,employee,0,BC,terminated,2026-09-15,,2025-05-02
 U016,Wyatt Mitchell,wyatt.mitchell@harborline-logistics.example,Warehouse Lead,D01,U007,employee,0,AB,active,,,2022-01-03
-U018,Amara Walker,amara.walker@harborline-logistics.example,Fleet Coordinator,D01,U007,employee,0,QC,active,,,2018-10-08
-U022,Noah Kowalski,noah.kowalski@harborline-logistics.example,Customer Success Manager,D02,U008,employee,0,BC,active,,,2017-09-20
-U037,Kavya Morrison,kavya.morrison@harborline-logistics.example,Maintenance Technician,D07,U012,employee,0,ON,active,,,2022-07-14
-U013,Aiden Grant (duplicate id),aiden.grant@harborline-logistics.example,Dispatcher,D01,U007,employee,0,ON,active,,,2019-09-11
-U-BAD-01,Aiden Grant,aiden.grant@harborline-logistics.example,Dispatcher,D01,U007,intern,0,ON,active,,,2019-09-11
-U-BAD-02,Aiden Grant,aiden.grant@harborline-logistics.example,Dispatcher,D99,U007,employee,0,ON,active,,,2019-09-11
-U-BAD-03,Aiden Grant,aiden.grant@harborline-logistics.example,Dispatcher,D01,U007,employee,0,ON,active,,,2026-02-31
