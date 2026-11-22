@@ -94,8 +94,8 @@ simulation of the card rules — no real card network is contacted.
 
 ### Activity & audit trail in the UI
 
-Every invoice has an **Activity & audit trail** button in the preview header and in the bottom
-action bar. It opens a chronological timeline written for people, not developers:
+Admins see an **Activity & audit trail** button in the preview header and in the bottom action bar.
+Non-admins never receive audit events from the API. It opens a chronological timeline written for people, not developers:
 
 - friendly action labels ("Placed on hold", "Payment released", "Review flag added")
 - who acted, their role, and who they acted on behalf of

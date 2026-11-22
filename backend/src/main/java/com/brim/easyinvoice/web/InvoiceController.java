@@ -171,6 +171,7 @@ public class InvoiceController {
 
         List<ApprovalStep> invoiceSteps = steps.forInvoice(id);
         List<AuditEvent> events = audit.forInvoice(id);
+        boolean canViewAudit = AuthorizationService.decide(user, Action.VIEW_ADMIN_SCREENS, null, List.of()).allowed();
         SourceDocument doc = invoice.getSourceDocument();
         List<Flag> invoiceFlags = flags.findByInvoice_IdOrderById(id);
         return new InvoiceDetail(summarize(user, invoice, invoiceSteps, invoiceFlags),
@@ -179,7 +180,7 @@ public class InvoiceController {
                 invoiceSteps.stream().map(ApprovalStepDto::from).toList(),
                 payments.findByInvoice_IdOrderById(id).stream().map(PaymentDto::from).toList(),
                 cardFor(user, id),
-                events, doc == null ? null : DocumentInfo.of(doc),
+                canViewAudit ? events : List.of(), doc == null ? null : DocumentInfo.of(doc),
                 PipelineProgress.compute(invoice, events, json),
                 authorization.allowedActions(user, invoice, invoiceSteps));
     }

@@ -217,6 +217,14 @@ class AuthorizationServiceTest {
             assertThat(decide(APPROVER, Action.UPLOAD_INVOICE, null, List.of()).allowed()).isFalse();
             assertThat(decide(EMPLOYEE, Action.UPLOAD_INVOICE, null, List.of()).allowed()).isTrue();
         }
+
+        @Test
+        void onlyAdminsViewTheAuditTrail() {
+            assertThat(decide(ADMIN, Action.VIEW_ADMIN_SCREENS, null, List.of()).allowed()).isTrue();
+            assertThat(decide(APPROVER, Action.VIEW_ADMIN_SCREENS, null, List.of()).allowed()).isFalse();
+            assertThat(decide(EMPLOYEE, Action.VIEW_ADMIN_SCREENS, null, List.of()).allowed()).isFalse();
+            assertThat(decide(TERMINATED_ADMIN, Action.VIEW_ADMIN_SCREENS, null, List.of()).allowed()).isFalse();
+        }
     }
 
     // ---------- helpers ----------

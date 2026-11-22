@@ -76,12 +76,12 @@ nginx.conf                   SPA fallback + /api proxy to the backend service
   vendor/amount/expiry locks and Admin-only simulator buttons. Success marks the card used; a failed
   attempt shows the automatic EFT fallback.
 - **One clear primary action:** the bottom action bar uses a full sentence, for example
-  `Approve ($12,500.00)`, `Release payment ($12,500.00)` or `Mark issue resolved`. The
-  `Audit trail` button sits beside it.
+  `Approve ($12,500.00)`, `Release payment ($12,500.00)` or `Mark issue resolved`. For Admins,
+  the `Audit trail` button sits beside it.
 - **Document first:** the risk overview stays at the top, the invoice PDF preview renders
   directly underneath, and the raw email is one tab away under `Original email`.
-- **Activity without jargon:** open **Activity & audit trail** from the preview header or footer
-  to see a simple timeline in chronological order: what happened, who did it, why, and which step
+- **Activity without jargon (Admins only):** open **Activity & audit trail** from the preview header
+  or footer to see a simple timeline in chronological order: what happened, who did it, why, and which step
   it affected. It defaults to **Key activity** and can switch to **All activity**; the header always
   shows how many events are in view. Long histories include **Jump to latest**, and hashes, event
   codes and JSON live under **Technical details**, so they never get in the way.

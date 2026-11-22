@@ -69,6 +69,7 @@ export default function App() {
   const toastTimer = useRef<number | undefined>(undefined)
 
   const currentUser = users.find((u) => u.id === userId) ?? null
+  const canViewAudit = currentUser?.role === 'ADMIN'
 
   const notify = useCallback((message: string, tone: ToastTone = 'success') => {
     setToast({ message, tone })
@@ -455,7 +456,7 @@ export default function App() {
   }
 
   const openInvoiceAudit = () => {
-    if (!selectedInvoice) return
+    if (!canViewAudit || !selectedInvoice) return
     setAuditView({
       invoiceId: selectedInvoice.id,
       title: 'Activity & audit trail',
@@ -469,6 +470,7 @@ export default function App() {
 
   const openGlobalAudit = useCallback(
     async (verify = false) => {
+      if (!canViewAudit) return
       setAuditView({ title: 'All activity', subtitle: 'Every recorded change across all invoices.' })
       setAuditEvents([])
       setAuditVerification(null)
@@ -495,11 +497,11 @@ export default function App() {
         setAuditLoading(false)
       }
     },
-    [notify],
+    [canViewAudit, notify],
   )
 
   const downloadAudit = () => {
-    if (!auditView) return
+    if (!canViewAudit || !auditView) return
     api
       .exportAudit(auditView.invoiceId)
       .then(() => notify('Audit log downloaded'))
@@ -709,6 +711,7 @@ export default function App() {
               onBack={backToInbox}
               onDownload={handleDownload}
               onAudit={openInvoiceAudit}
+              canViewAudit={canViewAudit}
               onOpenCard={() => openCardModal(selectedInvoice, true)}
             />
           </div>
@@ -742,7 +745,7 @@ export default function App() {
       />
 
       <AuditTrailDrawer
-        open={Boolean(auditView)}
+        open={canViewAudit && Boolean(auditView)}
         events={auditEventsForDrawer}
         users={users}
         title={auditView?.title}

@@ -43,6 +43,7 @@ interface PreviewPanelProps {
   onBack: () => void
   onDownload: () => void
   onAudit: () => void
+  canViewAudit: boolean
   onOpenCard: () => void
 }
 
@@ -72,6 +73,7 @@ export function PreviewPanel({
   onBack,
   onDownload,
   onAudit,
+  canViewAudit,
   onOpenCard,
 }: PreviewPanelProps) {
   const [tab, setTab] = useState<'document' | 'email'>('document')
@@ -160,15 +162,17 @@ export function PreviewPanel({
           >
             <Download size={16} />
           </button>
-          <button
-            type="button"
-            onClick={onAudit}
-            aria-label="View activity and audit trail"
-            title="Activity & audit trail"
-            className="icon-btn"
-          >
-            <History size={16} />
-          </button>
+          {canViewAudit && (
+            <button
+              type="button"
+              onClick={onAudit}
+              aria-label="View activity and audit trail"
+              title="Activity & audit trail — Admins only"
+              className="icon-btn"
+            >
+              <History size={16} />
+            </button>
+          )}
         </div>
       </header>
 
@@ -379,9 +383,11 @@ export function PreviewPanel({
               <span className="truncate">{shownAction.label}</span>
             </button>
 
-            <button type="button" onClick={onAudit} className="action-secondary">
-              <History size={14} /> Audit trail
-            </button>
+            {canViewAudit && (
+              <button type="button" onClick={onAudit} className="action-secondary" title="Admins only">
+                <History size={14} /> Audit trail
+              </button>
+            )}
             {secondary.map((item) => {
               const Icon = actionIcons[item.kind]
               return (
