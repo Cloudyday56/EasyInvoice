@@ -1,58 +1,38 @@
 [
   {
-    "email_id": "EM-011",
-    "from_name": "Prairie Natural Gas Utility Accounts Receivable",
-    "from_address": "ar@prairienatural.example",
+    "email_id": "EM-005",
+    "from_name": "Trailhead Fuel Services Accounts Receivable",
+    "from_address": "ar@trailheadfuel.example",
     "to_address": "ap@harborline-logistics.example",
-    "subject": "Facture PR26-1012",
-    "received_at": "2026-10-23T13:40:00",
-    "body": "Bonjour,\n\nVeuillez trouver ci-joint la facture PR26-1012.\n\nCordialement,\nPrairie Natural Gas Utility",
+    "subject": "Payment due: invoice TR26-1042",
+    "received_at": "2026-10-21T08:35:00",
+    "body": "Bonjour,\n\nVeuillez trouver ci-joint la facture TR26-1042.\n\nCordialement,\nTrailhead Fuel Services",
     "attachments": [
-      "scan_8749.png"
+      "Invoice TR26-1042.pdf"
     ]
   },
   {
-    "email_id": "EM-017",
-    "from_name": "Voyageur Corporate Travel Accounts Receivable",
-    "from_address": "ar@voyageurcorporate.example",
+    "email_id": "EM-024",
+    "from_name": "Paper Trail Office Supply Accounts Receivable",
+    "from_address": "ar@papertrail.example",
     "to_address": "ap@harborline-logistics.example",
-    "subject": "Invoice 000903-A from Voyageur Corporate Travel",
-    "received_at": "2026-10-27T12:41:00",
-    "body": "Hello,\n\nPlease find attached our invoice 000903-A for services provided. Payment terms are on the invoice.\n\nThank you,\nVoyageur Corporate Travel Accounts Receivable",
+    "subject": "Invoice 2217 from Paper Trail Office Supply",
+    "received_at": "2026-10-28T15:37:00",
+    "body": "Hi AP team,\n\nInvoice 2217 attached. Let us know if you have any questions.\n\nRegards,\nPaper Trail Office Supply",
     "attachments": [
-      "voyageurcorporat-inv-017.pdf"
+      "papertrailoffice_2217.pdf"
     ]
   },
   {
-    "email_id": "EM-028",
-    "from_name": "Polar Freight Lines Ltd. Accounts Receivable",
-    "from_address": "ar@polarfreight.example",
+    "email_id": "EM-053",
+    "from_name": "Lumen Print & Signage Accounts Receivable",
+    "from_address": "ar@lumenprint.example",
     "to_address": "ap@harborline-logistics.example",
-    "subject": "Payment due: invoice 000961",
-    "received_at": "2026-10-29T12:17:00",
-    "body": "Bonjour,\n\nVeuillez trouver ci-joint la facture 000961.\n\nCordialement,\nPolar Freight Lines Ltd.",
+    "subject": "Invoice FA-001761",
+    "received_at": "2026-11-02T09:32:00",
+    "body": "Hi AP team,\n\nInvoice FA-001761 attached. Let us know if you have any questions.\n\nRegards,\nLumen Print & Signage",
     "attachments": [
-      "Invoice 000961.pdf"
+      "lumenprintsignag_FA001761.pdf"
     ]
-  },
-  {
-    "from_name": "Brightmore Consulting Group",
-    "from_address": "ar@brightmoreconsulting.example",
-    "subject": "Invoice attached",
-    "received_at": "2026-10-29T16:29:00",
-    "body": "Hello,\n\nPlease find our October invoice attached.\n\nBrightmore Consulting",
-    "attachments": [],
-    "email_id": "EM-058",
-    "to_address": "ap@harborline-logistics.example"
-  },
-  {
-    "from_name": "Deskhive Furniture",
-    "from_address": "news@deskhivefurniture.example",
-    "subject": "Fall sale: 20% off ergonomic chairs",
-    "received_at": "2026-10-31T07:47:00",
-    "body": "Our fall sale is on. Shop now and save on ergonomic chairs and sit/stand desks.",
-    "attachments": [],
-    "email_id": "EM-059",
-    "to_address": "ap@harborline-logistics.example"
   }
 ]

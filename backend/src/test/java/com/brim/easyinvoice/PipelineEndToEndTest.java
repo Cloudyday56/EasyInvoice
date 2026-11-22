@@ -16,6 +16,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import com.brim.easyinvoice.model.InvoiceStatus;
 import com.brim.easyinvoice.model.Payment;
+import com.brim.easyinvoice.model.ApprovalStep;
 import com.brim.easyinvoice.model.User;
 import com.brim.easyinvoice.pipeline.HumanActionService;
 import com.brim.easyinvoice.repo.FlagRepository;
@@ -59,6 +60,8 @@ import static org.awaitility.Awaitility.await;
  * the schema Hibernate generates, the CSV seed, the pipeline runner, approvals, release, the audit chain.
  */
 @SpringBootTest(properties = {
+        "app.data-dir=../data",   // the full dataset: these tests rely on its history and mail volume
+        "app.history-dir=../data",
         "app.pipeline.poll-ms=100",
         "app.pipeline.step-delay-ms=0",
         "app.bank.settle-after-ms=300",
@@ -92,6 +95,7 @@ class PipelineEndToEndTest {
     @Autowired PaymentRepository payments;
     @Autowired UserRepository users;
     @Autowired FlagRepository flags;
+    @Autowired com.brim.easyinvoice.repo.ApprovalStepRepository steps;
     @Autowired FxRateRepository fxRates;
     @Autowired VendorRepository vendors;
     @Autowired DepartmentRepository departments;
@@ -287,6 +291,42 @@ class PipelineEndToEndTest {
     }
 
     /** A real invoice from the sample batch, so the manual extractor has something to read. */
+    @Test
+    @Order(8)
+    void delegateApprovesOnBehalfOfApproverOnLeaveAndAnotherAdminReleases() throws Exception {
+        User kavya = users.get("U037");     // Facilities employee
+        User liam = users.get("U012");      // Facilities manager, on leave, delegate = Elise
+        User elise = users.get("U003");
+        User dev = users.get("U007");
+        assertThat(liam.isOnLeave()).isTrue();
+        assertThat(liam.getDelegateId()).isEqualTo("U003");
+
+        String invoiceId = intake.upload(kavya, realPdf("Invoice 000964.pdf")).invoiceId();
+        waitForStatus(invoiceId, InvoiceStatus.PENDING_APPROVAL);
+
+        // The step is assigned to Elise, acting for Liam. Nobody else may approve it.
+        ApprovalStep step = transaction.execute(tx -> steps.forInvoice(invoiceId).get(0));
+        assertThat(step.getAssignedUserId()).isEqualTo("U003");
+        assertThat(step.getActingForId()).isEqualTo("U012");
+        assertThatThrownBy(() -> actions.approve(dev, invoiceId, null)).isInstanceOf(ForbiddenException.class);
+        assertThatThrownBy(() -> actions.approve(liam, invoiceId, null)).isInstanceOf(ForbiddenException.class);
+
+        actions.approve(elise, invoiceId, "Covering for Liam");
+        waitForStatus(invoiceId, InvoiceStatus.SCHEDULED);
+        assertThat(audit.forInvoice(invoiceId)).anySatisfy(e -> {
+            assertThat(e.getAction()).isEqualTo("approval.approved");
+            assertThat(e.getActorId()).isEqualTo("U003");
+            assertThat(e.getActingFor()).isEqualTo("U012");
+        });
+
+        // Elise (stand-in) and Liam (stood in for) cannot release; Marcus can.
+        Payment payment = payments.activeForInvoice(invoiceId).orElseThrow();
+        assertThatThrownBy(() -> actions.release(elise, payment.getId())).isInstanceOf(ForbiddenException.class);
+        actions.release(users.get("U002"), payment.getId());
+        waitForStatus(invoiceId, InvoiceStatus.PAID);
+        assertThat(audit.verifyChain().valid()).isTrue();
+    }
+
     private static MockMultipartFile realPdf(String fileName) throws IOException {
         return realPdf(fileName, fileName);
     }
@@ -298,6 +338,7 @@ class PipelineEndToEndTest {
 
     private void waitForStatus(String invoiceId, InvoiceStatus expected) {
         await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(100))
-                .untilAsserted(() -> assertThat(invoices.get(invoiceId).getStatus()).isEqualTo(expected));
+                .untilAsserted(() -> assertThat(invoices.get(invoiceId).getStatus())
+                        .as("invoice %s (hold: %s)", invoiceId, invoices.get(invoiceId).getHoldReason()).isEqualTo(expected));
     }
 }

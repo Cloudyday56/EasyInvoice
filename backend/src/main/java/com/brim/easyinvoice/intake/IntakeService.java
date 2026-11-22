@@ -114,7 +114,7 @@ public class IntakeService {
                 if (r.duplicate()) skipped++; else created++;
             }
             for (String attachment : attachments) {
-                byte[] bytes = readFile(dataDir.resolve("incoming_invoices").resolve(attachment));
+                byte[] bytes = readFile(attachmentPath(attachment));
                 IntakeResult r = intake(DocumentChannel.EMAIL, email.email_id(), attachment, guessContentType(attachment), bytes,
                         sender, email.subject(), email.body(), receivedAt, null);
                 if (r.duplicate()) skipped++; else created++;
@@ -176,6 +176,15 @@ public class IntakeService {
         return json.readValue(readFile(dataDir.resolve("inbox").resolve("emails.json")),
                 new TypeReference<List<InboxEmail>>() {
                 });
+    }
+
+    /**
+     * Where a polled email's attachment lives: inbox/attachments first (files that only exist as mail), then
+     * incoming_invoices (the folder the demo also uploads from by hand).
+     */
+    private Path attachmentPath(String attachment) {
+        Path mail = dataDir.resolve("inbox").resolve("attachments").resolve(attachment);
+        return Files.exists(mail) ? mail : dataDir.resolve("incoming_invoices").resolve(attachment);
     }
 
     private static byte[] readFile(Path path) {

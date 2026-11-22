@@ -44,6 +44,9 @@ public interface InvoiceRepository extends JpaRepository<Invoice, String> {
     /** Repeat guard: does another invoice from this vendor already have this canonical number? */
     boolean existsByVendor_IdAndCanonicalInvoiceNumberAndIdNot(String vendorId, String canonicalNumber, String invoiceId);
 
+    /** The vendor's most recent other invoice that has a department (used to route emailed invoices). */
+    Optional<Invoice> findFirstByVendor_IdAndDepartmentIsNotNullAndIdNotOrderByCreatedAtDescIdDesc(String vendorId, String invoiceId);
+
     /** Prior invoices for the same vendor, used by the amount-outlier signal at N6. */
     List<Invoice> findByVendor_IdAndIdNot(String vendorId, String invoiceId);
 
