@@ -129,6 +129,17 @@ class AuthorizationServiceTest {
         }
 
         @Test
+        void adminWhoUploadedTheInvoiceCanNeitherApproveReleaseNorResolveHolds() {
+            Invoice invoice = invoice(InvoiceStatus.SCHEDULED, SECOND_ADMIN.getId(), "D01", 2_000);
+            assertThat(decide(SECOND_ADMIN, Action.RELEASE_PAYMENT, invoice, List.of()).allowed()).isFalse();
+            Invoice held = invoice(InvoiceStatus.ON_HOLD, SECOND_ADMIN.getId(), "D01", 2_000);
+            assertThat(decide(SECOND_ADMIN, Action.RESOLVE_HOLD, held, List.of()).allowed()).isFalse();
+            assertThat(decide(ADMIN, Action.RESOLVE_HOLD, held, List.of()).allowed()).isTrue();
+            Invoice pending = invoice(InvoiceStatus.PENDING_APPROVAL, SECOND_ADMIN.getId(), "D01", 2_000);
+            assertThat(decide(SECOND_ADMIN, Action.APPROVE_INVOICE, pending, pendingStepFor(SECOND_ADMIN.getId())).allowed()).isFalse();
+        }
+
+        @Test
         void approverCannotReleaseTheSameInvoice() {
             Invoice invoice = invoice(InvoiceStatus.SCHEDULED, "E1", "D01", 2_000);
             List<ApprovalStep> steps = List.of(step(1, "ADM1", null, "APPROVED", "ADM1"));

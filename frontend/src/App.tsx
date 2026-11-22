@@ -20,9 +20,11 @@ type ToastTone = 'success' | 'error'
 const LIST_POLL_MS = 2500
 const DETAIL_POLL_MS = 1200
 
-const isHold = (invoice: Invoice) =>
-  isOnHold(invoice.raw.status) || invoice.raw.status === 'IGNORED' || invoice.flags.includes('fraud')
 const isClosed = (invoice: Invoice) => invoice.raw.status === 'PAID' || invoice.raw.status === 'REJECTED'
+// Closed invoices live only in "Paid & closed", even if they carry a fraud flag.
+const isHold = (invoice: Invoice) =>
+  !isClosed(invoice) &&
+  (isOnHold(invoice.raw.status) || invoice.raw.status === 'IGNORED' || invoice.flags.includes('fraud'))
 const isAction = (invoice: Invoice) => !isClosed(invoice) && !isHold(invoice)
 
 interface ReasonRequest {

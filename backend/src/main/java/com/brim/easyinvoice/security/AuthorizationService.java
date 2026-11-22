@@ -149,6 +149,10 @@ public class AuthorizationService {
         if (invoice.getStatus() != InvoiceStatus.ON_HOLD && invoice.getStatus() != InvoiceStatus.ON_HOLD_VENDOR) {
             return Decision.deny("Invoice is not on hold");
         }
+        // Separation of duties: nobody clears or rejects an exception on an invoice they uploaded themselves.
+        if (user.getId().equals(invoice.getRequesterId())) {
+            return Decision.deny("No self-review: you requested this invoice");
+        }
         return Decision.allow();
     }
 
@@ -159,6 +163,10 @@ public class AuthorizationService {
         }
         if (invoice.getStatus() != InvoiceStatus.SCHEDULED) {
             return Decision.deny("Payment is not scheduled (invoice status " + invoice.getStatus() + ")");
+        }
+        // Separation of duties: an Admin who uploaded the invoice cannot release its payment either.
+        if (user.getId().equals(invoice.getRequesterId())) {
+            return Decision.deny("No self-release: you requested this invoice");
         }
         // Separation of duties: whoever approved a step (or was stood in for by a delegate who did) cannot release.
         boolean approvedAStep = steps.stream().anyMatch(s -> s.isApproved()

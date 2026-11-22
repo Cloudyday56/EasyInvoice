@@ -327,6 +327,25 @@ class PipelineEndToEndTest {
         assertThat(audit.verifyChain().valid()).isTrue();
     }
 
+    @Test
+    @Order(9)
+    void executiveInvoiceFallsBackToAnAdminAndEndsPaid() throws Exception {
+        User priya = users.get("U001");   // CFO and the only manager of D08: cannot approve her own invoice
+        String invoiceId = intake.upload(priya, realPdf("Invoice 002935.pdf")).invoiceId();
+        waitForStatus(invoiceId, InvoiceStatus.PENDING_APPROVAL);
+
+        ApprovalStep step = transaction.execute(tx -> steps.forInvoice(invoiceId).get(0));
+        assertThat(step.getAssignedUserId()).isNotEqualTo("U001");
+
+        User approver = users.get(step.getAssignedUserId());
+        actions.approve(approver, invoiceId, "manual check");
+        waitForStatus(invoiceId, InvoiceStatus.SCHEDULED);
+        Payment payment = payments.activeForInvoice(invoiceId).orElseThrow();
+        assertThatThrownBy(() -> actions.release(priya, payment.getId())).isInstanceOf(ForbiddenException.class);   // her own invoice
+        actions.release(users.get(approver.getId().equals("U002") ? "U003" : "U002"), payment.getId());
+        waitForStatus(invoiceId, InvoiceStatus.PAID);
+    }
+
     private static MockMultipartFile realPdf(String fileName) throws IOException {
         return realPdf(fileName, fileName);
     }

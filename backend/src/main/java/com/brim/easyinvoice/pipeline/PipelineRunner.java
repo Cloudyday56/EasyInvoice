@@ -130,6 +130,7 @@ public class PipelineRunner {
         StageResult result;
         try {
             result = demoBlock(invoice, job.getNode(), document);
+            if (result == null) result = skipIfOverridden(invoice, job.getNode());
             if (result == null) {
                 result = nodes.get(job.getNode()).run(invoice, new NodeContext(document, job.getAttempts()));
             }
@@ -226,6 +227,25 @@ public class PipelineRunner {
             }
             wrapper.setPropertyValue(entry.getKey(), entry.getValue());
         }
+    }
+
+    /** Nodes that only CHECK the invoice. They produce no data later nodes need, so an Admin override may skip them. */
+    private static final Set<NodeName> SKIPPABLE_WHEN_OVERRIDDEN = Set.of(NodeName.VALIDATION_RULES, NodeName.FRAUD_SCORING);
+
+    /**
+     * "Mark issue resolved" on a hold overrides the BLOCK flags of the node that stopped the invoice. When that node
+     * only checks (fraud scoring, validation), it is not run again: re-running would just block on the same
+     * thing, or on a new signal the Admin never reviewed. Nodes that produce data (extraction, vendor match,
+     * routing) always re-run, since the next nodes depend on what they write.
+     */
+    private StageResult skipIfOverridden(Invoice invoice, NodeName node) {
+        if (!SKIPPABLE_WHEN_OVERRIDDEN.contains(node)) return null;
+        return flags.findByInvoice_IdOrderById(invoice.getId()).stream()
+                .filter(f -> node.name().equals(f.getNode()) && f.isOverridden() && f.getSeverity() == FlagSeverity.BLOCK)
+                .findFirst()
+                .map(f -> StageResult.pass(node.label() + " skipped: overridden by " + f.getOverriddenById()
+                        + " (" + f.getOverrideReason() + ")"))
+                .orElse(null);
     }
 
     /**

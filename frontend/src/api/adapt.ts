@@ -176,10 +176,12 @@ function paymentOf(dto: InvoiceDto): PaymentMethod {
 
 function flagsOf(dto: InvoiceDto): InvoiceFlag[] {
   const flags = new Set<InvoiceFlag>()
-  if (dto.holdQueue === 'FRAUD_HOLD' || (dto.riskScore ?? 0) >= 40) flags.add('fraud')
+  // Fraud alert = still in the fraud queue, or a fraud signal nobody has overridden. The risk score alone is history:
+  // it stays on the invoice after an Admin resolves the hold, so it must not keep the alert alive.
+  if (dto.holdQueue === 'FRAUD_HOLD') flags.add('fraud')
   if (isOnHold(dto.status) && dto.holdQueue !== 'FRAUD_HOLD') flags.add('critical')
   if (dto.flags.some((f) => f.severity === 'BLOCK' && !f.overriddenBy)) flags.add('critical')
-  if (dto.flags.some((f) => /FRAUD|BANK/i.test(f.code) && !f.overriddenBy)) flags.add('fraud')
+  if (dto.flags.some((f) => (f.node === 'FRAUD_SCORING' || /FRAUD|BANK/i.test(f.code)) && !f.overriddenBy)) flags.add('fraud')
   if (dto.dueDate && !isTerminal(dto.status)) {
     const [y, m, d] = dto.dueDate.split('-').map(Number)
     if (new Date(y, m - 1, d).getTime() < Date.now()) flags.add('overdue')
